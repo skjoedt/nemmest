@@ -1,0 +1,14 @@
+[tools]
+node = "25"
+
+[tasks.dev]
+run = "npm run dev"
+
+[tasks.build]
+run = "npm run build"
+
+[tasks.preview]
+run = "npm run preview"
+
+[tasks.check]
+run = "npm run check"
