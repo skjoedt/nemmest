@@ -11,3 +11,7 @@ Thumbs.db
 # Vite
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
+
+# Environment — never commit real credentials
+.env
+.env.local

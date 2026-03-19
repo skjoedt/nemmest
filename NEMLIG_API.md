@@ -1,0 +1,38 @@
+# Nemlig.com API Specification Summary
+
+This specification details the endpoints, methods, and parameters identified from the traffic report.
+
+#### **1\. Base URLs**
+
+* **Primary API**: https://www.nemlig.com/webapi
+
+* **Banner Service**: https://webapi.prod.knl.nemlig.it/bannerservicebff/api
+
+#### **2\. Core Endpoints**
+
+| Category | Method | Endpoint | Description |
+| :---- | :---- | :---- | :---- |
+| **Products** | GET | /{session}/Products/GetByProductGroupId | Retrieves products by group ID. Parameters include productGroupId, sortorder, pageIndex, and pagesize.  |
+| **Orders** | GET | /order/GetBasicOrderHistory | Fetches a summary of order history. Uses skip and take for pagination.  |
+| **Orders** | GET | /v2/order/GetOrderHistory/{orderId} | Retrieves detailed history for a specific order ID. |
+| **Shopping Lists** | GET | /ShoppingList/GetShoppingLists | Lists the user's saved shopping lists with skip and take. |
+| **Shopping Lists** | GET | /ShoppingList/getShoppingList | Gets items from a specific list using listId. |
+| **Basket** | POST | /basket/addShoppingListToBasket | Adds all items from a saved list to the active cart. |
+| **Basket** | POST | /basket/AddToBasket | Adds a single item to the cart. |
+| **Recipes** | GET | /8N2gkvhu/recipe/GetByRecipeGroupId | Fetches recipes in a group, often with a contextId. |
+| **Filters** | GET | /{session}/{id}/Filter/GetFilter | Retrieves faceted search filters for products or recipes. |
+| **Auth** | POST | /Token | Manages authentication tokens and sessions. |
+
+#### **3\. Common Request Headers**
+
+Requests typically include the following metadata headers:
+
+* **accept**: application/json, text/plain, \*/\*
+
+* **device-size**: desktop
+
+* **platform**: web
+
+* **version**: 11.233.0
+
+* **x-correlation-id**: A unique UUID for request tracking (e.g., 282a80ac-015f-4eef-b073-02596edec573).  
