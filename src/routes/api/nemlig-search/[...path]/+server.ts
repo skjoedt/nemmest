@@ -1,7 +1,7 @@
 import { json, error } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
-import { buildUpstreamHeaders, getNemligCookieHeader, forwardCookies } from '$lib/server/nemlig';
-import { checkBurstLimit } from '$lib/server/rate-limit';
+import { buildUpstreamHeaders, getNemligCookieHeader, forwardCookies } from '$lib/nemlig';
+import { checkBurstLimit } from '$lib/rate-limit';
 
 const SEARCH_BASE_URL = 'https://webapi.prod.knl.nemlig.it/searchgateway/api';
 const FORWARD_RESPONSE_HEADERS = ['content-type', 'cache-control', 'etag'];

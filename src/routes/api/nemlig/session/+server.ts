@@ -1,6 +1,6 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
-import { NEMLIG_SESSION_COOKIE } from '$lib/server/nemlig';
+import { NEMLIG_SESSION_COOKIE } from '$lib/nemlig';
 
 export const GET: RequestHandler = ({ cookies }) => {
 	const raw = cookies.get(NEMLIG_SESSION_COOKIE);
