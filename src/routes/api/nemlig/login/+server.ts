@@ -51,8 +51,7 @@ export const POST: RequestHandler = async ({ request, cookies }) => {
 	}
 
 	if (!nemligRes.ok) {
-		const text = await nemligRes.text().catch(() => '');
-		error(502, `nemlig.com returned ${nemligRes.status}: ${text.slice(0, 200)}`);
+		error(502, 'nemlig.com returned an unexpected error');
 	}
 
 	forwardCookies(nemligRes, cookies);

@@ -3,7 +3,6 @@ import type { RequestHandler } from './$types';
 import { NEMLIG_BASE_URL, buildUpstreamHeaders, getNemligCookieHeader, forwardCookies } from '$lib/server/nemlig';
 import { checkBurstLimit } from '$lib/server/rate-limit';
 
-const ALLOWED_METHODS = new Set(['GET', 'POST', 'PUT', 'DELETE']);
 const FORWARD_RESPONSE_HEADERS = ['content-type', 'cache-control', 'etag', 'last-modified'];
 
 const handler: RequestHandler = async ({ request, params, cookies }) => {
@@ -13,10 +12,6 @@ const handler: RequestHandler = async ({ request, params, cookies }) => {
 			{ error: 'Too many requests', reason: 'rate_limited' },
 			{ status: 429, headers: { 'Retry-After': String(Math.ceil(limit.retryAfterMs / 1000)) } },
 		);
-	}
-
-	if (!ALLOWED_METHODS.has(request.method)) {
-		error(405, `Method ${request.method} not allowed`);
 	}
 
 	const cookieHeader = getNemligCookieHeader(cookies);

@@ -4,7 +4,6 @@ import { buildUpstreamHeaders, getNemligCookieHeader, forwardCookies } from '$li
 import { checkBurstLimit } from '$lib/server/rate-limit';
 
 const SEARCH_BASE_URL = 'https://webapi.prod.knl.nemlig.it/searchgateway/api';
-const ALLOWED_METHODS = new Set(['GET', 'POST']);
 const FORWARD_RESPONSE_HEADERS = ['content-type', 'cache-control', 'etag'];
 
 const handler: RequestHandler = async ({ request, params, cookies }) => {
@@ -16,10 +15,6 @@ const handler: RequestHandler = async ({ request, params, cookies }) => {
 		);
 	}
 
-	if (!ALLOWED_METHODS.has(request.method)) {
-		error(405, `Method ${request.method} not allowed`);
-	}
-
 	const cookieHeader = getNemligCookieHeader(cookies);
 
 	if (!cookieHeader) {
@@ -29,7 +24,7 @@ const handler: RequestHandler = async ({ request, params, cookies }) => {
 	const upstreamUrl = new URL(`${SEARCH_BASE_URL}/${params.path ?? ''}`);
 	new URL(request.url).searchParams.forEach((v, k) => upstreamUrl.searchParams.set(k, v));
 
-	const hasBody = request.method === 'POST';
+	const hasBody = request.method !== 'GET' && request.method !== 'DELETE';
 	const upstreamBody = hasBody ? await request.text() : undefined;
 
 	let nemligRes: Response;
