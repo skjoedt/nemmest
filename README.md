@@ -13,7 +13,7 @@ Users can easily add favorite products and meal plans to their nemlig.com shoppi
 
 - [x] Create a settings page for testing login
 - [x] Implement nemlig API proxy at /api/nemlig and /api/nemlig-search
-- [ ] Implement postgres database to store user favorites
+- [x] Implement postgres database to store user favorites
 - [ ] Create a product page with search and favoritize
 - [ ] Create a recipe page with search and favoritize
 - [ ] Create an automated meal planner based on favorite recipes only

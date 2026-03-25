@@ -12,3 +12,9 @@ run = "npm run preview"
 
 [tasks.check]
 run = "npm run check"
+
+[tasks."db:generate"]
+run = "drizzle-kit generate"
+
+[tasks."db:migrate"]
+run = "drizzle-kit migrate"
