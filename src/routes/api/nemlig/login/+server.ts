@@ -1,6 +1,6 @@
 import { json, error } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
-import { NEMLIG_BASE_URL, NEMLIG_STATIC_HEADERS, forwardCookies } from '$lib/client';
+import { NEMLIG_BASE_URL, NEMLIG_STATIC_HEADERS, forwardCookies } from '$lib/server/nemlig';
 import { checkLoginLimit } from '$lib/server/rate-limit';
 
 export const POST: RequestHandler = async ({ request, cookies }) => {

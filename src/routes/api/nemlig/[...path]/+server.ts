@@ -1,6 +1,6 @@
 import { json, error } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
-import { NEMLIG_BASE_URL, buildUpstreamHeaders, forwardCookies } from '$lib/client';
+import { NEMLIG_BASE_URL, buildUpstreamHeaders, getNemligCookieHeader, forwardCookies } from '$lib/server/nemlig';
 import { checkBurstLimit } from '$lib/server/rate-limit';
 
 const ALLOWED_METHODS = new Set(['GET', 'POST', 'PUT', 'DELETE']);
@@ -19,8 +19,7 @@ const handler: RequestHandler = async ({ request, params, cookies }) => {
 		error(405, `Method ${request.method} not allowed`);
 	}
 
-	const allCookies = cookies.getAll();
-	const cookieHeader = allCookies.map((c) => `${c.name}=${c.value}`).join('; ') || null;
+	const cookieHeader = getNemligCookieHeader(cookies);
 
 	if (!cookieHeader) {
 		return json({ error: 'Not authenticated', reason: 'unauthenticated' }, { status: 401 });
