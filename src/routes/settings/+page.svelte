@@ -9,8 +9,12 @@
 	let password = $state('');
 
 	onMount(async () => {
-		const res = await fetch('/api/nemlig/session');
-		connected = res.ok;
+		try {
+			const res = await fetch('/api/nemlig/session');
+			connected = res.ok;
+		} catch {
+			connected = false;
+		}
 	});
 
 	async function connect() {
