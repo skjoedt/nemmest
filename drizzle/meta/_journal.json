@@ -8,6 +8,27 @@
       "when": 1774527719135,
       "tag": "0000_init",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1774527720000,
+      "tag": "0001_recipes",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1774527730000,
+      "tag": "0002_recipe_deselected",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1774527740000,
+      "tag": "0003_recipe_sort_order",
+      "breakpoints": true
     }
   ]
 }

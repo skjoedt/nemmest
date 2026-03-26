@@ -10,3 +10,22 @@ export const productFavorites = pgTable('product_favorites', {
 	url: text('url'),
 	addedAt: timestamp('added_at').defaultNow().notNull(),
 });
+
+export const recipeFavorites = pgTable('recipe_favorites', {
+	id: serial('id').primaryKey(),
+	recipeId: text('recipe_id').notNull().unique(),
+	name: text('name').notNull(),
+	description: text('description'),
+	imageUrl: text('image_url'),
+	preparationTime: integer('preparation_time'),
+	url: text('url'),
+	deselectedIngredientIds: text('deselected_ingredient_ids'),
+	sortOrder: text('sort_order').notNull().default('default'),
+	addedAt: timestamp('added_at').defaultNow().notNull(),
+});
+
+export const userSettings = pgTable('user_settings', {
+	id: serial('id').primaryKey(),
+	key: text('key').notNull().unique(),
+	value: text('value').notNull(),
+});

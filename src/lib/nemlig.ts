@@ -1,4 +1,5 @@
 import type { Cookies } from '@sveltejs/kit';
+import { logger } from '$lib/logger';
 
 export const NEMLIG_BASE_URL = 'https://www.nemlig.com/webapi';
 
@@ -19,6 +20,8 @@ export class NemligAuthError extends Error {
 		this.name = 'NemligAuthError';
 	}
 }
+
+const log = logger.withTag('nemlig');
 
 // Parses all Set-Cookie headers from a nemlig response and merges the resulting
 // name→value pairs into the existing session blob in an HttpOnly app-owned cookie.
@@ -42,9 +45,18 @@ export function forwardCookies(response: Response, cookies: Cookies): void {
 	if (Object.keys(incoming).length === 0) return;
 
 	// Merge into existing session so previously-set cookies (e.g. .ASPXAUTH) are preserved.
+	let session: Record<string, string> = {};
 	const existing = cookies.get(NEMLIG_SESSION_COOKIE);
-	const session: Record<string, string> = existing ? JSON.parse(existing) : {};
+	if (existing) {
+		try {
+			session = JSON.parse(existing);
+		} catch (e) {
+			log.error('Failed to parse nemlig_session cookie, resetting:', e);
+		}
+	}
 	Object.assign(session, incoming);
+
+	log.debug(`Forwarding cookies: ${Object.keys(incoming).join(', ')}`);
 
 	cookies.set(NEMLIG_SESSION_COOKIE, JSON.stringify(session), {
 		path: '/',
@@ -58,7 +70,13 @@ export function forwardCookies(response: Response, cookies: Cookies): void {
 export function getNemligCookieHeader(cookies: Cookies): string | null {
 	const raw = cookies.get(NEMLIG_SESSION_COOKIE);
 	if (!raw) return null;
-	const session = JSON.parse(raw) as Record<string, string>;
+	let session: Record<string, string>;
+	try {
+		session = JSON.parse(raw) as Record<string, string>;
+	} catch (e) {
+		log.error('Failed to parse nemlig_session cookie:', e);
+		return null;
+	}
 	const header = Object.entries(session).map(([k, v]) => `${k}=${v}`).join('; ');
 	return header || null;
 }

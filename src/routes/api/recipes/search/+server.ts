@@ -3,69 +3,51 @@ import type { RequestHandler } from './$types';
 import { NEMLIG_STATIC_HEADERS } from '$lib/nemlig';
 import { getSearchContext, invalidateSearchContext } from '$lib/nemlig-context';
 import { checkBurstLimit } from '$lib/rate-limit';
-import type { NemligProduct } from '$lib/types';
+import type { NemligRecipe } from '$lib/types';
 import { logger } from '$lib/logger';
 
-const log = logger.withTag('products/search');
+const log = logger.withTag('recipes/search');
 
 const GATEWAY_SEARCH = 'https://webapi.prod.knl.nemlig.it/searchgateway/api/search';
 
-// ── Gateway product shape ─────────────────────────────────────────────────────
+// ── Gateway recipe shape ──────────────────────────────────────────────────────
 
-interface GatewayProduct {
+interface GatewayRecipe {
 	Id: string;
 	Name: string;
-	Description?: string;
 	PrimaryImage?: string;
-	Brand?: string;
-	Price?: number;
-	UnitPriceCalc?: number;
-	UnitPriceLabel?: string;
-	DiscountItem?: boolean;
+	TotalTime?: string; // e.g. "30 min" or "1 t 15 min"
 	Url?: string;
-	Campaign?: {
-		CampaignPrice?: number;
-		DiscountSavings?: number;
-		Type?: string;
-		MinQuantity?: number;
-	};
+	Tags?: string[];
+	NumberOfPersons?: number;
 }
 
 interface GatewaySearchResponse {
-	Products?: {
-		Products?: GatewayProduct[];
-		NumFound?: number;
-	};
+	// Recipes is a plain array (indexed object), not a nested { Recipes, NumFound } wrapper
+	Recipes?: GatewayRecipe[] | Record<string, GatewayRecipe>;
+	RecipesNumFound?: number;
 }
 
-function normalizeProduct(p: GatewayProduct): NemligProduct {
-	const price = p.Price ?? 0;
-	const campaignPrice = p.Campaign?.CampaignPrice ?? null;
-	const isOnSale = campaignPrice !== null && campaignPrice < price;
-	const discountSavings = isOnSale
-		? (p.Campaign?.DiscountSavings && p.Campaign.DiscountSavings > 0
-			? p.Campaign.DiscountSavings
-			: price - campaignPrice)
-		: null;
+/** Parse "30 min", "1 t", "1 t 15 min" → total minutes */
+function parseTotalTime(s: string | undefined): number | null {
+	if (!s) return null;
+	const hoursMatch = s.match(/(\d+)\s*t/);
+	const minsMatch = s.match(/(\d+)\s*min/);
+	const hours = hoursMatch ? parseInt(hoursMatch[1], 10) : 0;
+	const mins = minsMatch ? parseInt(minsMatch[1], 10) : 0;
+	const total = hours * 60 + mins;
+	return total > 0 ? total : null;
+}
 
-	// UnitPriceLabel from gateway is just "kr/kg", format with UnitPriceCalc
-	const unitPrice = p.UnitPriceCalc != null && p.UnitPriceLabel
-		? `${p.UnitPriceCalc.toFixed(2).replace('.', ',')} ${p.UnitPriceLabel}`
-		: null;
-
+function normalizeRecipe(r: GatewayRecipe): NemligRecipe {
 	return {
-		id: p.Id,
-		name: p.Name,
-		description: p.Description ?? null,
-		imageUrl: p.PrimaryImage ?? null,
-		brand: p.Brand ?? null,
-		price,
-		campaignPrice,
-		discountSavings,
-		unitPrice,
-		unitPriceLabel: p.UnitPriceLabel ?? null,
-		isOnSale,
-		url: p.Url ? `https://www.nemlig.com/${p.Url}` : null,
+		id: r.Id,
+		name: r.Name,
+		description: null,
+		imageUrl: r.PrimaryImage ?? null,
+		preparationTime: parseTotalTime(r.TotalTime),
+		// Url from gateway already includes leading slash e.g. "/opskrifter/..."
+		url: r.Url ? `https://www.nemlig.com${r.Url.startsWith('/') ? '' : '/'}${r.Url}` : null,
 	};
 }
 
@@ -74,7 +56,7 @@ function normalizeProduct(p: GatewayProduct): NemligProduct {
 export const GET: RequestHandler = async ({ url }) => {
 	const q = url.searchParams.get('q')?.trim() ?? '';
 	if (q.length < 2) {
-		return json({ products: [], numFound: 0 });
+		return json({ recipes: [], numFound: 0 });
 	}
 
 	const limit = checkBurstLimit();
@@ -99,16 +81,15 @@ export const GET: RequestHandler = async ({ url }) => {
 
 	const searchUrl = new URL(GATEWAY_SEARCH);
 	searchUrl.searchParams.set('query', q);
-	searchUrl.searchParams.set('take', '24');
-	searchUrl.searchParams.set('skip', String((parseInt(url.searchParams.get('page') ?? '0', 10)) * 24));
+	// 'take' controls products; must be >= 1 or the gateway returns 500.
+	// We set it to 1 to minimise product data transfer — we only want recipes.
+	searchUrl.searchParams.set('take', '1');
 	searchUrl.searchParams.set('timestamp', ctx.timestamp);
 	if (ctx.timeslotUtc) searchUrl.searchParams.set('timeslotUtc', ctx.timeslotUtc);
 	searchUrl.searchParams.set('deliveryZoneId', String(ctx.deliveryZoneId));
 
 	let gatewayRes: Response;
 	try {
-		// Omit content-type on this GET — the gateway interprets it as expecting
-		// a JSON body and returns 400 "does not contain JSON tokens" if present.
 		const { 'content-type': _ct, ...gatewayHeaders } = NEMLIG_STATIC_HEADERS;
 		gatewayRes = await fetch(searchUrl.toString(), {
 			headers: {
@@ -124,7 +105,6 @@ export const GET: RequestHandler = async ({ url }) => {
 
 	if (!gatewayRes.ok) {
 		if (gatewayRes.status === 401) {
-			// JWT expired — invalidate cache and retry on next request
 			log.warn('JWT expired, invalidating context cache');
 			invalidateSearchContext();
 			return json({ error: 'Search token expired. Please try again.', reason: 'token_expired' }, { status: 401 });
@@ -142,11 +122,15 @@ export const GET: RequestHandler = async ({ url }) => {
 		return json({ error: 'Invalid search response from nemlig.com' }, { status: 502 });
 	}
 
-	const products = data?.Products?.Products ?? [];
-	const numFound = data?.Products?.NumFound ?? products.length;
+	// Recipes arrives as a plain array (or an indexed object when count > 0)
+	const rawRecipes = data?.Recipes;
+	const recipes: GatewayRecipe[] = rawRecipes
+		? (Array.isArray(rawRecipes) ? rawRecipes : Object.values(rawRecipes))
+		: [];
+	const numFound = data?.RecipesNumFound ?? recipes.length;
 
 	return json({
-		products: products.map(normalizeProduct),
+		recipes: recipes.map(normalizeRecipe),
 		numFound,
 	});
 };

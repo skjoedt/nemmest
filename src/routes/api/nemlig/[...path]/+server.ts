@@ -2,6 +2,9 @@ import { json, error } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { NEMLIG_BASE_URL, buildUpstreamHeaders, getNemligCookieHeader, forwardCookies } from '$lib/nemlig';
 import { checkBurstLimit } from '$lib/rate-limit';
+import { logger } from '$lib/logger';
+
+const log = logger.withTag('nemlig/proxy');
 
 const FORWARD_RESPONSE_HEADERS = ['content-type', 'cache-control', 'etag', 'last-modified'];
 
@@ -23,8 +26,14 @@ const handler: RequestHandler = async ({ request, params, cookies }) => {
 	const upstreamUrl = new URL(`${NEMLIG_BASE_URL}/${params.path ?? ''}`);
 	new URL(request.url).searchParams.forEach((v, k) => upstreamUrl.searchParams.set(k, v));
 
+	log.info(`${request.method} ${upstreamUrl}`);
+
 	const hasBody = request.method !== 'GET' && request.method !== 'DELETE';
 	const upstreamBody = hasBody ? await request.text() : undefined;
+
+	if (upstreamBody) {
+		log.debug('Request body:', upstreamBody);
+	}
 
 	let nemligRes: Response;
 	try {
@@ -33,21 +42,27 @@ const handler: RequestHandler = async ({ request, params, cookies }) => {
 			headers: buildUpstreamHeaders(cookieHeader),
 			body: upstreamBody,
 		});
-	} catch {
+	} catch (e) {
+		log.error('Network error reaching nemlig.com:', e);
 		error(502, 'Could not reach nemlig.com');
 	}
 
 	if (nemligRes.status === 401 || nemligRes.status === 403) {
+		log.warn(`Session expired or forbidden (${nemligRes.status})`);
 		return json({ error: 'Nemlig session expired', reason: 'session_expired' }, { status: 401 });
 	}
 
+	const responseText = await nemligRes.text().catch(() => '');
+
 	if (!nemligRes.ok) {
-		const text = await nemligRes.text().catch(() => '');
+		log.error(`Upstream error ${nemligRes.status}:`, responseText.slice(0, 500));
 		return json(
-			{ error: `nemlig.com error ${nemligRes.status}`, detail: text.slice(0, 500) },
+			{ error: `nemlig.com error ${nemligRes.status}`, detail: responseText.slice(0, 500) },
 			{ status: nemligRes.status },
 		);
 	}
+
+	log.debug(`Response ${nemligRes.status}:`, responseText.slice(0, 1000));
 
 	forwardCookies(nemligRes, cookies);
 
@@ -57,7 +72,7 @@ const handler: RequestHandler = async ({ request, params, cookies }) => {
 		if (value) responseHeaders.set(name, value);
 	}
 
-	return new Response(await nemligRes.text(), {
+	return new Response(responseText, {
 		status: nemligRes.status,
 		headers: responseHeaders,
 	});
