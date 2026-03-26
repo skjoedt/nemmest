@@ -17,6 +17,7 @@ This specification details the endpoints, methods, and parameters identified fro
 | **Orders** | GET | /v2/order/GetOrderHistory/{orderId} | Retrieves detailed history for a specific order ID. |
 | **Shopping Lists** | GET | /ShoppingList/GetShoppingLists | Lists the user's saved shopping lists with skip and take. |
 | **Shopping Lists** | GET | /ShoppingList/getShoppingList | Gets items from a specific list using listId. |
+| **Shopping Lists** | POST | /webapi/ShoppingList/UpdateProductInShoppingList | Add/update a product in a shopping list. Params: `listId`, `productId`, `amount`. |
 | **Basket** | POST | /basket/addShoppingListToBasket | Adds all items from a saved list to the active cart. |
 | **Basket** | POST | /basket/AddToBasket | Adds a single item to the cart. |
 | **Recipes** | GET | /8N2gkvhu/recipe/GetByRecipeGroupId | Fetches recipes in a group, often with a contextId. |
