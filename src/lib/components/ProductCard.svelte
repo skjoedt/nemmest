@@ -6,10 +6,14 @@
 		isFavorite: boolean;
 		/** When true, show price info (search results). Favorites don't show price. */
 		showPrice?: boolean;
+		/** Current quantity in the nemlig basket. Undefined = basket not loaded / not authenticated. */
+		basketQty?: number;
 		onToggleFavorite: (product: NemligProduct | FavoriteProduct) => void;
+		/** Called when user wants to set a new basket quantity. Absence means basket not available. */
+		onBasketChange?: (productId: number, newQty: number) => void;
 	}
 
-	let { product, isFavorite, showPrice = true, onToggleFavorite }: Props = $props();
+	let { product, isFavorite, showPrice = true, basketQty, onToggleFavorite, onBasketChange }: Props = $props();
 
 	// Normalise: both NemligProduct (id: string) and FavoriteProduct (productId: number)
 	// expose the fields we need. Use $derived so these update if the prop changes.
@@ -31,6 +35,8 @@
 	const unitPrice = $derived('unitPrice' in product ? product.unitPrice : null);
 	const isOnSale = $derived('isOnSale' in product ? product.isOnSale : false);
 	const productUrl = $derived('url' in product ? product.url : null);
+
+	const inBasket = $derived(basketQty !== undefined && basketQty > 0);
 
 	function formatPrice(p: number): string {
 		// Danish format: "33,95" → show as "33,95"
@@ -68,8 +74,8 @@
 		<!-- Campaign badge -->
 		{#if showPrice && isOnSale && discountSavings}
 			<div class="absolute top-2 right-2 bg-orange-500 text-white text-xs font-bold rounded-full w-12 h-12 flex flex-col items-center justify-center leading-tight shadow">
-				<span class="text-[9px] font-semibold">Save</span>
-				<span class="text-sm font-black leading-none">{formatSavings(discountSavings)}</span>
+				<span class="text-[9px] font-semibold">Køb flere,</span>
+				<span class="text-[9px] font-semibold">spar mere</span>
 			</div>
 		{/if}
 	</div>
@@ -91,7 +97,7 @@
 				<div>
 					{#if isOnSale && campaignPrice !== null}
 						<div class="flex items-baseline gap-1.5">
-							<span class="text-xl font-black text-zinc-900">{formatPrice(campaignPrice)}</span>
+							<span class="text-xl font-black text-orange-500">{formatPrice(campaignPrice)}</span>
 							<span class="text-sm text-zinc-400 line-through">{formatPrice(price)}</span>
 						</div>
 					{:else}
@@ -102,21 +108,58 @@
 					{/if}
 				</div>
 			{/if}
-			<!-- Add to basket (placeholder) -->
-			<button
-				type="button"
-				title="Add to basket"
-				disabled
-				class="flex-shrink-0 flex items-center justify-center w-9 h-9 rounded-full
-					bg-zinc-100 text-zinc-400 cursor-not-allowed"
-				aria-label="Add to basket"
-			>
-				<svg class="size-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-					<circle cx="9" cy="21" r="1"/>
-					<circle cx="20" cy="21" r="1"/>
-					<path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/>
-				</svg>
-			</button>
+
+			<!-- Basket control -->
+			{#if inBasket}
+				<!-- Stepper: − qty + -->
+				<div class="flex-shrink-0 flex items-center rounded-full border border-zinc-200 bg-white overflow-hidden h-9">
+					<button
+						type="button"
+						onclick={() => onBasketChange!(productId, basketQty! - 1)}
+						aria-label="Remove one from basket"
+						class="flex items-center justify-center w-9 h-full text-zinc-600 hover:bg-zinc-100 transition-colors text-lg font-medium"
+					>−</button>
+					<span class="min-w-[1.5rem] text-center text-sm font-semibold text-zinc-900 px-0.5 select-none">{basketQty}</span>
+					<button
+						type="button"
+						onclick={() => onBasketChange!(productId, basketQty! + 1)}
+						aria-label="Add one to basket"
+						class="flex items-center justify-center w-9 h-full text-zinc-600 hover:bg-zinc-100 transition-colors text-lg font-medium"
+					>+</button>
+				</div>
+			{:else if onBasketChange}
+				<!-- Authenticated, not in basket: active cart button -->
+				<button
+					type="button"
+					onclick={() => onBasketChange(productId, 1)}
+					title="Add to basket"
+					aria-label="Add to basket"
+					class="flex-shrink-0 flex items-center justify-center w-9 h-9 rounded-full
+						bg-zinc-800 text-white hover:bg-zinc-700 transition-colors"
+				>
+					<svg class="size-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+						<circle cx="9" cy="21" r="1"/>
+						<circle cx="20" cy="21" r="1"/>
+						<path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/>
+					</svg>
+				</button>
+			{:else}
+				<!-- Not authenticated: disabled cart button -->
+				<button
+					type="button"
+					title="Add to basket"
+					disabled
+					class="flex-shrink-0 flex items-center justify-center w-9 h-9 rounded-full
+						bg-zinc-100 text-zinc-400 cursor-not-allowed"
+					aria-label="Add to basket"
+				>
+					<svg class="size-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+						<circle cx="9" cy="21" r="1"/>
+						<circle cx="20" cy="21" r="1"/>
+						<path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/>
+					</svg>
+				</button>
+			{/if}
 		</div>
 	</div>
 

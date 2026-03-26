@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import ProductCard from '$lib/components/ProductCard.svelte';
-	import type { NemligProduct, FavoriteProduct } from '$lib/types';
+	import type { NemligProduct, FavoriteProduct, BasketLine } from '$lib/types';
 
 	// ── State ────────────────────────────────────────────────────────────────
 
@@ -15,10 +15,21 @@
 	let searchStatus = $state<SearchStatus>('idle');
 	let searchError = $state('');
 	let favoritesLoading = $state(true);
+	let basketLines = $state<BasketLine[] | undefined>(undefined);
+	
+	// Map from numeric product ID → current quantity for O(1) lookup in cards
+	const basketQtyMap = $derived(
+		basketLines
+			? new Map(basketLines.map((l) => [parseInt(l.Id, 10), l.Quantity]))
+			: undefined
+	);
 
 	// ── Lifecycle ────────────────────────────────────────────────────────────
 
-	onMount(loadFavorites);
+	onMount(() => {
+		loadFavorites();
+		loadBasket();
+	});
 
 	// ── Search (debounced) ───────────────────────────────────────────────────
 
@@ -120,6 +131,66 @@
 			});
 		}
 	}
+
+	// ── Basket ───────────────────────────────────────────────────────────────
+
+	async function loadBasket() {
+		try {
+			// Auth check first — silent failure keeps basket buttons disabled
+			const sessionRes = await fetch('/api/nemlig/session');
+			if (!sessionRes.ok) return;
+
+			const res = await fetch('/api/nemlig/basket/GetBasket');
+			if (!res.ok) return;
+
+			const data = await res.json() as { Lines?: BasketLine[] };
+			basketLines = data.Lines ?? [];
+		} catch {
+			// Non-critical — basket buttons just stay disabled
+		}
+	}
+
+	async function handleBasketChange(productId: number, newQty: number) {
+		if (!basketLines) return;
+
+		// Optimistic update
+		if (newQty <= 0) {
+			basketLines = basketLines.filter((l) => parseInt(l.Id, 10) !== productId);
+		} else {
+			const idx = basketLines.findIndex((l) => parseInt(l.Id, 10) === productId);
+			if (idx !== -1) {
+				// Update existing line quantity in place
+				basketLines = basketLines.map((l) =>
+					parseInt(l.Id, 10) === productId ? { ...l, Quantity: newQty } : l
+				);
+			} else {
+				// New line — add a minimal placeholder so the stepper appears immediately
+				const placeholder: BasketLine = {
+					Id: String(productId),
+					Name: '',
+					Description: null,
+					PrimaryImage: null,
+					Price: 0,
+					ItemPrice: 0,
+					UnitPrice: '',
+					UnitPriceLabel: '',
+					Quantity: newQty,
+				};
+				basketLines = [...basketLines, placeholder];
+			}
+		}
+
+		await fetch('/api/nemlig/basket/AddToBasket', {
+			method: 'POST',
+			headers: { 'content-type': 'application/json' },
+			body: JSON.stringify({
+				ProductId: String(productId),
+				quantity: newQty,
+				AffectPartialQuantity: true,
+				disableQuantityValidation: false,
+			}),
+		});
+	}
 </script>
 
 <div class="py-6 space-y-8">
@@ -178,7 +249,9 @@
 						{product}
 						isFavorite={favoriteIds.has(parseInt(product.id, 10))}
 						showPrice={true}
+						basketQty={basketQtyMap?.get(parseInt(product.id, 10)) ?? 0}
 						onToggleFavorite={toggleFavorite}
+						onBasketChange={basketLines !== undefined ? handleBasketChange : undefined}
 					/>
 				{/each}
 			</div>
@@ -221,7 +294,9 @@
 						product={fav}
 						isFavorite={true}
 						showPrice={false}
+						basketQty={basketQtyMap?.get(fav.productId) ?? 0}
 						onToggleFavorite={toggleFavorite}
+						onBasketChange={basketLines !== undefined ? handleBasketChange : undefined}
 					/>
 				{/each}
 			</div>
