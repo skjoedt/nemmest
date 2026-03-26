@@ -18,6 +18,7 @@ This specification details the endpoints, methods, and parameters identified fro
 | **Shopping Lists** | GET | /ShoppingList/GetShoppingLists | Lists the user's saved shopping lists with skip and take. |
 | **Shopping Lists** | GET | /ShoppingList/getShoppingList | Gets items from a specific list using listId. |
 | **Shopping Lists** | POST | /webapi/ShoppingList/UpdateProductInShoppingList | Add/update a product in a shopping list. Params: `listId`, `productId`, `amount`. |
+| **Basket** | GET  | /basket/GetBasket | Returns the current basket. `Lines[]` contains the items; each has `Id`, `Name`, `Description`, `PrimaryImage`, `ItemPrice`, `UnitPrice` (formatted string), `UnitPriceLabel`, `Price` (line total), `Quantity`. Top-level `TotalProductsPrice` is the products subtotal. |
 | **Basket** | POST | /basket/addShoppingListToBasket | Adds all items from a saved list to the active cart. |
 | **Basket** | POST | /basket/AddToBasket | Adds a single item to the cart. |
 | **Recipes** | GET | /8N2gkvhu/recipe/GetByRecipeGroupId | Fetches recipes in a group, often with a contextId. |

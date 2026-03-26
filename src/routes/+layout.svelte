@@ -8,6 +8,7 @@
 		{ href: '/', label: 'Home' },
 		{ href: '/recipes', label: 'Recipes' },
 		{ href: '/products', label: 'Products' },
+		{ href: '/basket', label: 'Basket' },
 		{ href: '/settings', label: 'Settings' },
 	];
 </script>

@@ -20,15 +20,15 @@ export class NemligAuthError extends Error {
 	}
 }
 
-// Parses all Set-Cookie headers from a nemlig response and stores the resulting
-// name→value pairs as a single JSON blob in an HttpOnly app-owned cookie.
+// Parses all Set-Cookie headers from a nemlig response and merges the resulting
+// name→value pairs into the existing session blob in an HttpOnly app-owned cookie.
 export function forwardCookies(response: Response, cookies: Cookies): void {
 	const h = response.headers as unknown as { getSetCookie?: () => string[] };
 	const raw = typeof h.getSetCookie === 'function'
 		? h.getSetCookie()
 		: (response.headers.get('set-cookie') ?? '').split(/,\s*(?=[^;,]+=)/).filter(Boolean);
 
-	const session: Record<string, string> = {};
+	const incoming: Record<string, string> = {};
 
 	for (const entry of raw) {
 		const [nameValue] = entry.split(';');
@@ -36,16 +36,21 @@ export function forwardCookies(response: Response, cookies: Cookies): void {
 		if (eq === -1) continue;
 		const name = nameValue.slice(0, eq).trim();
 		const value = nameValue.slice(eq + 1).trim();
-		session[name] = value;
+		incoming[name] = value;
 	}
 
-	if (Object.keys(session).length > 0) {
-		cookies.set(NEMLIG_SESSION_COOKIE, JSON.stringify(session), {
-			path: '/',
-			httpOnly: true,
-			sameSite: 'lax',
-		});
-	}
+	if (Object.keys(incoming).length === 0) return;
+
+	// Merge into existing session so previously-set cookies (e.g. .ASPXAUTH) are preserved.
+	const existing = cookies.get(NEMLIG_SESSION_COOKIE);
+	const session: Record<string, string> = existing ? JSON.parse(existing) : {};
+	Object.assign(session, incoming);
+
+	cookies.set(NEMLIG_SESSION_COOKIE, JSON.stringify(session), {
+		path: '/',
+		httpOnly: true,
+		sameSite: 'lax',
+	});
 }
 
 // Returns the nemlig session cookies as an upstream Cookie header string,

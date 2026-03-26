@@ -24,3 +24,16 @@ export interface FavoriteProduct {
 	brand: string | null;
 	url: string | null;
 }
+
+// A single line item in the nemlig.com basket (from GET /webapi/basket/GetBasket)
+export interface BasketLine {
+	Id: string;
+	Name: string;
+	Description: string | null;
+	PrimaryImage: string | null;
+	Price: number;         // line total (Price * Quantity)
+	ItemPrice: number;     // unit price
+	UnitPrice: string;     // formatted unit price, e.g. "15,00"
+	UnitPriceLabel: string; // e.g. "kr./Stk."
+	Quantity: number;
+}
