@@ -3,6 +3,8 @@
 	import { Circle, Star, PiggyBank, Leaf } from 'lucide-svelte';
 	import type { NemligRecipe, FavoriteRecipe, RecipeIngredient, RecipeSortOrder } from '$lib/types';
 	import IngredientRow from './IngredientRow.svelte';
+	import PriceHistoryChart from './PriceHistoryChart.svelte';
+	import { formatPrice } from '$lib/format';
 
 	interface Props {
 		recipe: NemligRecipe | FavoriteRecipe;
@@ -69,6 +71,7 @@
 		('sortOrder' in recipe && recipe.sortOrder) ? recipe.sortOrder : initialSortOrder
 	);
 	let expanded = $state(false);
+	let showPriceHistory = $state(false);
 
 	// Deselection — local set of productSelectionIds. Initialised from prop.
 	let deselected = $state(new Set<string>(deselectedIngredientIds));
@@ -243,11 +246,6 @@
 		onDeselectionChange?.(recipeId, [...next]);
 	}
 
-	function formatPrice(p: number): string {
-		const [int, dec] = p.toFixed(2).split('.');
-		return dec === '00' ? `${int},-` : `${int},${dec}`;
-	}
-
 	function formatTime(minutes: number): string {
 		if (minutes < 60) return `${minutes} min`;
 		const h = Math.floor(minutes / 60);
@@ -380,6 +378,24 @@
 				<div></div>
 			{/if}
 
+			<!-- Price history graph toggle (favorites only) -->
+			{#if isFavorite}
+				<button
+					type="button"
+					onclick={() => (showPriceHistory = !showPriceHistory)}
+					title={showPriceHistory ? 'Hide price history' : 'Show price history'}
+					aria-label={showPriceHistory ? 'Hide price history' : 'Show price history'}
+					class="flex items-center justify-center w-7 h-7 rounded-full transition-colors
+						{showPriceHistory
+							? 'bg-zinc-900 text-white'
+							: 'text-zinc-400 hover:text-zinc-700 hover:bg-zinc-100'}"
+				>
+					<svg class="size-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+						<polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
+					</svg>
+				</button>
+			{/if}
+
 			<!-- Add to basket button / inline confirmation stepper -->
 			{#if addStatus === 'done'}
 				<!-- Success state — auto-resets -->
@@ -486,6 +502,11 @@
 				</button>
 			{/if}
 		</div>
+
+		<!-- Price history chart (favorites only, toggled by the graph icon) -->
+		{#if isFavorite && showPriceHistory}
+			<PriceHistoryChart {recipeId} {persons} {sortOrder} />
+		{/if}
 	</div>
 
 	<!-- Favorite button — overlaid top-left of image -->

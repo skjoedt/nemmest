@@ -113,3 +113,7 @@ export const VALID_SORT_ORDERS = new Set<RecipeSortOrder>([
 	'priceasc',
 	'organic',
 ]);
+
+export function parseSortOrder(raw: string | null | undefined): RecipeSortOrder {
+	return VALID_SORT_ORDERS.has(raw as RecipeSortOrder) ? (raw as RecipeSortOrder) : 'default';
+}

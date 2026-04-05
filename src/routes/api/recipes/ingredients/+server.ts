@@ -123,7 +123,13 @@ export const GET: RequestHandler = async ({ url }) => {
 		return json({ error: 'Invalid response from nemlig.com' }, { status: 502 });
 	}
 
-	const ingredients = (data?.Products ?? []).map(normalizeIngredient);
+	const rawProducts = data?.Products ?? [];
+	const nullProducts = rawProducts.filter((sel) => sel.Product == null);
+	if (nullProducts.length > 0) {
+		const names = nullProducts.map((sel) => sel.Title.trim()).join(', ');
+		log.warn(`recipeId=${recipeId} → skipping ${nullProducts.length} ingredient(s) with null Product: ${names}`);
+	}
+	const ingredients = rawProducts.filter((sel) => sel.Product != null).map(normalizeIngredient);
 	// Exclude optional (supplement) products from the price total — they are
 	// shown in the UI for reference but should not affect cost or the basket.
 	const total = ingredients

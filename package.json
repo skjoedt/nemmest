@@ -15,6 +15,7 @@
 		"@sveltejs/kit": "^2.50.2",
 		"@sveltejs/vite-plugin-svelte": "^6.2.4",
 		"@types/node": "^25.5.0",
+		"@types/node-cron": "^3.0.11",
 		"drizzle-kit": "^0.31.10",
 		"svelte": "^5.51.0",
 		"svelte-check": "^4.4.2",
@@ -26,7 +27,9 @@
 		"dotenv": "^17.3.1",
 		"drizzle-orm": "^0.45.1",
 		"lucide-svelte": "^1.0.1",
+		"node-cron": "^4.2.1",
 		"postgres": "^3.4.8",
-		"tailwindcss": "^4.2.1"
+		"tailwindcss": "^4.2.1",
+		"uplot": "^1.6.32"
 	}
 }

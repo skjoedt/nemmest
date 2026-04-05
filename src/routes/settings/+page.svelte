@@ -140,6 +140,23 @@
 			status = 'idle';
 		}
 	}
+
+	// ── Price history job ────────────────────────────────────────────────────
+	type JobStatus = 'idle' | 'running' | 'done' | 'error';
+	let jobStatus = $state<JobStatus>('idle');
+
+	async function runPriceFetch() {
+		if (jobStatus === 'running') return;
+		jobStatus = 'running';
+		try {
+			const res = await fetch('/api/workers/fetch-recipe-prices', { method: 'POST' });
+			jobStatus = res.ok ? 'done' : 'error';
+		} catch {
+			jobStatus = 'error';
+		} finally {
+			setTimeout(() => { jobStatus = 'idle'; }, 4000);
+		}
+	}
 </script>
 
 <div class="py-8 space-y-8">
@@ -344,6 +361,55 @@
 					</svg>
 				{/if}
 			</div>
+		</div>
+	</section>
+
+	<!-- Price history -->
+	<section class="rounded-xl border border-zinc-200 bg-white divide-y divide-zinc-100">
+		<div class="px-5 py-4">
+			<h2 class="text-sm font-medium text-zinc-900">Price history</h2>
+			<p class="mt-0.5 text-xs text-zinc-500">Prices for favorited recipes are recorded automatically at 06:00 every day.</p>
+		</div>
+		<div class="px-5 py-4 flex items-center justify-between gap-4">
+			<div>
+				<p class="text-sm font-medium text-zinc-700">Fetch prices now</p>
+				<p class="text-xs text-zinc-400 mt-0.5">Run the price fetch job immediately for all favorited recipes.</p>
+			</div>
+			<button
+				type="button"
+				onclick={runPriceFetch}
+				disabled={jobStatus === 'running'}
+				class="shrink-0 inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium
+					transition-colors disabled:cursor-not-allowed disabled:opacity-50
+					{jobStatus === 'done'
+						? 'bg-green-600 text-white'
+						: jobStatus === 'error'
+							? 'bg-red-500 text-white'
+							: 'bg-zinc-900 text-white hover:bg-zinc-700'}"
+			>
+				{#if jobStatus === 'running'}
+					<svg class="size-4 animate-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+						<path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/>
+					</svg>
+					Fetching…
+				{:else if jobStatus === 'done'}
+					<svg class="size-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+						<polyline points="20 6 9 17 4 12"/>
+					</svg>
+					Done
+				{:else if jobStatus === 'error'}
+					<svg class="size-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+						<path d="M12 9v4M12 17h.01"/>
+						<path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+					</svg>
+					Failed
+				{:else}
+					<svg class="size-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+						<polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
+					</svg>
+					Fetch prices now
+				{/if}
+			</button>
 		</div>
 	</section>
 </div>
