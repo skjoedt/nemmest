@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import type { BasketLine, BasketRecipe } from '$lib/types';
+	import { formatPrice } from '$lib/format';
 	import IngredientRow from '$lib/components/IngredientRow.svelte';
 
 	// ── State ────────────────────────────────────────────────────────────────
@@ -140,11 +141,6 @@
 
 	// ── Formatting ───────────────────────────────────────────────────────────
 
-	function fmt(n: number): string {
-		const [int, dec] = n.toFixed(2).split('.');
-		return dec === '00' ? `${int},-` : `${int},${dec}`;
-	}
-
 	const SORT_LABELS: Record<string, string> = {
 		default: 'Default',
 		recommended: 'Recommended',
@@ -254,7 +250,7 @@
 								</div>
 							</td>
 							<!-- Line total -->
-							<td class="px-4 py-3 text-right font-semibold text-zinc-900 whitespace-nowrap">{fmt(line.ItemPrice * line.Quantity)} kr.</td>
+							<td class="px-4 py-3 text-right font-semibold text-zinc-900 whitespace-nowrap">{formatPrice(line.ItemPrice * line.Quantity)} kr.</td>
 							<!-- Delete -->
 							<td class="px-4 py-3">
 								<button
@@ -337,7 +333,7 @@
 
 								<!-- Total -->
 								<td class="px-4 py-3 text-right font-semibold text-zinc-900 whitespace-nowrap">
-									{fmt(recipe.RecipeTotalPrice)} kr.
+									{formatPrice(recipe.RecipeTotalPrice)} kr.
 								</td>
 
 								<!-- Delete -->
@@ -387,7 +383,7 @@
 				<tfoot>
 					<tr class="border-t border-zinc-200 bg-zinc-50">
 						<td colspan="4" class="px-4 py-3 text-sm font-medium text-zinc-500">Total</td>
-						<td class="px-4 py-3 text-right text-base font-bold text-zinc-900 whitespace-nowrap">{fmt(totalProductsPrice)} kr.</td>
+						<td class="px-4 py-3 text-right text-base font-bold text-zinc-900 whitespace-nowrap">{formatPrice(totalProductsPrice)} kr.</td>
 						<td></td>
 					</tr>
 				</tfoot>

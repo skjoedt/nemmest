@@ -1,3 +1,5 @@
+import { json } from '@sveltejs/kit';
+
 const LOGIN_CAPACITY = 3;
 const LOGIN_REFILL_MS = 200_000; // 10 min / 3 tokens
 
@@ -37,4 +39,14 @@ export function checkBurstLimit(): RateLimitResult {
 	}
 	burstCount += 1;
 	return { ok: true };
+}
+
+/** Returns a 429 Response if the burst limit is hit, otherwise null. */
+export function enforceBurstLimit(): Response | null {
+	const limit = checkBurstLimit();
+	if (limit.ok) return null;
+	return json(
+		{ error: 'Too many requests', reason: 'rate_limited' },
+		{ status: 429, headers: { 'Retry-After': String(Math.ceil(limit.retryAfterMs / 1000)) } },
+	);
 }

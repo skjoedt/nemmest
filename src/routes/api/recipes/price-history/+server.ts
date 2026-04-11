@@ -3,17 +3,14 @@ import type { RequestHandler } from './$types';
 import { db } from '$lib/db';
 import { recipePriceHistory } from '$lib/schema';
 import { and, eq, gte, sql } from 'drizzle-orm';
-import { parseSortOrder } from '$lib/types';
-import { parsePersonsSetting } from '$lib/settings';
 import { logger } from '$lib/logger';
 
 const log = logger.withTag('recipes/price-history');
 
-// GET /api/recipes/price-history?recipeId=<uuid>&persons=<n>&sortOrder=<x>
+// GET /api/recipes/price-history?recipeId=<uuid>
 //
-// Returns the last 90 days of price snapshots for the given recipe+config,
-// plus the 30-day low. Only rows matching the exact persons + sortOrder are
-// returned so the graph always reflects the current card configuration.
+// Returns the last 90 days of price snapshots for the given recipe,
+// plus the 30-day low.
 export const GET: RequestHandler = async ({ url }) => {
 	const recipeId = url.searchParams.get('recipeId');
 	if (!recipeId) {
@@ -23,13 +20,10 @@ export const GET: RequestHandler = async ({ url }) => {
 		return json({ error: 'recipeId must be a valid UUID' }, { status: 400 });
 	}
 
-	const persons = parsePersonsSetting({ persons: url.searchParams.get('persons') ?? '' });
-	const sortOrder = parseSortOrder(url.searchParams.get('sortOrder'));
-
 	const since = new Date();
 	since.setDate(since.getDate() - 90);
 
-	log.debug(`recipeId=${recipeId} persons=${persons} sortOrder=${sortOrder}`);
+	log.debug(`recipeId=${recipeId}`);
 
 	const rows = await db
 		.select({
@@ -40,8 +34,6 @@ export const GET: RequestHandler = async ({ url }) => {
 		.where(
 			and(
 				eq(recipePriceHistory.recipeId, recipeId),
-				eq(recipePriceHistory.persons, persons),
-				eq(recipePriceHistory.sortOrder, sortOrder),
 				gte(recipePriceHistory.fetchedAt, since),
 			),
 		)

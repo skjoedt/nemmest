@@ -1,17 +1,18 @@
 <script lang="ts">
+	import { formatPrice } from '$lib/format';
+
 	interface Props {
 		imageUrl: string | null;
 		name: string;
-		/** Weight/size/volume string, e.g. "250 g / Danmark / Klasse 1" */
 		meta?: string | null;
 		quantity: number;
 		price: number;
-		/** If true: grey out + strikethrough + allow click to re-include */
 		isDeselected?: boolean;
-		/** If provided, wraps the product name in an <a> opening in a new tab */
+		isCustom?: boolean;
 		href?: string | null;
-		/** Click handler — used for deselect/re-select in recipe card mode */
-		onclick?: () => void;
+		onToggleDeselect?: () => void;
+		onQuantityChange?: (value: string) => void;
+		onRemove?: () => void;
 	}
 
 	let {
@@ -21,27 +22,15 @@
 		quantity,
 		price,
 		isDeselected = false,
+		isCustom = false,
 		href = null,
-		onclick,
+		onToggleDeselect,
+		onQuantityChange,
+		onRemove,
 	}: Props = $props();
-
-	function formatPrice(p: number): string {
-		const [int, dec] = p.toFixed(2).split('.');
-		return dec === '00' ? `${int},-` : `${int},${dec}`;
-	}
-
-	const clickable = !!onclick;
 </script>
 
-<!-- svelte-ignore a11y_no_static_element_interactions -->
-<!-- svelte-ignore a11y_click_events_have_key_events -->
-<div
-	class="flex items-center gap-2 py-0.5 px-1 rounded transition-colors
-		{isDeselected ? 'opacity-40' : ''}
-		{clickable ? 'cursor-pointer select-none hover:bg-zinc-50' : ''}"
-	onclick={clickable ? onclick : undefined}
-	title={isDeselected ? 'Click to include' : clickable ? 'Click to exclude' : undefined}
->
+<div class="flex items-center gap-2 py-0.5 px-1 rounded {isDeselected ? 'opacity-40' : ''}">
 	<!-- Tiny product image -->
 	<div class="w-7 h-7 shrink-0 rounded overflow-hidden bg-zinc-100 flex items-center justify-center">
 		{#if imageUrl}
@@ -60,23 +49,69 @@
 				rel="noopener noreferrer"
 				class="text-xs font-medium text-zinc-800 hover:underline truncate block
 					{isDeselected ? 'line-through text-zinc-400' : ''}"
-				onclick={(e) => e.stopPropagation()}
 			>{name}</a>
 		{:else}
 			<span class="text-xs font-medium text-zinc-800 truncate block
 				{isDeselected ? 'line-through text-zinc-400' : ''}"
 			>{name}</span>
 		{/if}
-		{#if meta}
-			<span class="text-[10px] text-zinc-400 truncate block leading-tight">{meta}</span>
-		{/if}
+	{#if meta}
+		<span class="text-[10px] text-zinc-400 truncate block leading-tight">{meta}</span>
+	{/if}
 	</div>
 
-	<!-- Quantity -->
-	<span class="text-[10px] text-zinc-400 tabular-nums shrink-0">×{quantity}</span>
+	<!-- Quantity (editable if onQuantityChange provided) -->
+	{#if onQuantityChange}
+		<input
+			type="number"
+			min="1"
+			value={quantity}
+			oninput={(e) => onQuantityChange((e.target as HTMLInputElement).value)}
+			class="w-10 text-center text-xs border border-zinc-200 rounded py-0.5 tabular-nums
+				focus:outline-none focus:border-zinc-400 {isDeselected ? 'opacity-50' : ''}"
+		/>
+	{:else}
+		<span class="text-[10px] text-zinc-400 tabular-nums shrink-0">×{quantity}</span>
+	{/if}
 
 	<!-- Price -->
 	<span class="text-xs font-medium tabular-nums shrink-0
 		{isDeselected ? 'line-through text-zinc-400' : 'text-zinc-700'}"
 	>{formatPrice(price)}</span>
+
+	<!-- Deselect toggle -->
+	{#if onToggleDeselect}
+		<button
+			type="button"
+			onclick={onToggleDeselect}
+			title={isDeselected ? 'Include' : 'Exclude'}
+			class="shrink-0 text-zinc-300 hover:text-zinc-600 transition-colors"
+		>
+			{#if isDeselected}
+				<svg class="size-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+					<circle cx="12" cy="12" r="10"/>
+					<path d="M12 8v8M8 12h8"/>
+				</svg>
+			{:else}
+				<svg class="size-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+					<circle cx="12" cy="12" r="10"/>
+					<path d="M8 12h8"/>
+				</svg>
+			{/if}
+		</button>
+	{/if}
+
+	<!-- Remove button -->
+	{#if onRemove}
+		<button
+			type="button"
+			onclick={onRemove}
+			title="Remove ingredient"
+			class="shrink-0 text-zinc-300 hover:text-red-400 transition-colors"
+		>
+			<svg class="size-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+				<path d="M18 6L6 18M6 6l12 12"/>
+			</svg>
+		</button>
+	{/if}
 </div>

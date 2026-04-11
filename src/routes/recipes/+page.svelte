@@ -1,20 +1,16 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import RecipeCard from '$lib/components/RecipeCard.svelte';
+	import SearchRecipeCard from '$lib/components/SearchRecipeCard.svelte';
+	import FavoriteRecipeCard from '$lib/components/FavoriteRecipeCard.svelte';
 	import type { NemligRecipe, FavoriteRecipe, RecipeSortOrder } from '$lib/types';
-	import { VALID_SORT_ORDERS } from '$lib/types';
 	import type { PageData } from './$types';
-
-	// ── Props ─────────────────────────────────────────────────────────────────
+	import { parsePersonsSetting, parseSortOrderSetting } from '$lib/settings';
 
 	let { data }: { data: PageData } = $props();
-
-	// ── State ────────────────────────────────────────────────────────────────
 
 	let query = $state('');
 	let searchResults = $state<NemligRecipe[]>([]);
 	let numFound = $state(0);
-	// Initialised from server-loaded data — no client-side fetch needed
 	let favorites = $state<FavoriteRecipe[]>(data.favorites);
 	let favoriteIds = $derived(new Set(favorites.map((f) => f.recipeId)));
 
@@ -23,36 +19,12 @@
 	let searchError = $state('');
 	let basketAvailable = $state(false);
 
-	// Initialise settings from server-loaded data
-	let persons = $state(
-		data.settings.persons
-			? Math.min(10, Math.max(1, parseInt(data.settings.persons, 10)))
-			: 4
-	);
-	let defaultSortOrder = $state<RecipeSortOrder>(
-		data.settings.defaultSortOrder && VALID_SORT_ORDERS.has(data.settings.defaultSortOrder as RecipeSortOrder)
-			? (data.settings.defaultSortOrder as RecipeSortOrder)
-			: 'default'
-	);
-	let showOptionalIngredients = $state(
-		data.settings.showOptionalIngredients !== undefined
-			? data.settings.showOptionalIngredients !== 'false'
-			: true
-	);
+	let persons = $state(parsePersonsSetting(data.settings));
+	let defaultSortOrder = $state<RecipeSortOrder>(parseSortOrderSetting(data.settings));
 
-	// ── Ephemeral deselection + sort order state for search results ─────────
-	// Maps recipeId → Set<productSelectionId> for non-favorited search results.
-	// Carried over when a recipe is favorited.
-	let searchDeselected = $state(new Map<string, Set<string>>());
-	let searchSortOrder = $state(new Map<string, RecipeSortOrder>());
+	onMount(() => { checkBasketAvailable(); });
 
-	// ── Lifecycle ────────────────────────────────────────────────────────────
-
-	onMount(() => {
-		checkBasketAvailable();
-	});
-
-	// ── Search (debounced) ───────────────────────────────────────────────────
+	// ── Search ────────────────────────────────────────────────────────────────
 
 	let debounceTimer: ReturnType<typeof setTimeout> | null = null;
 
@@ -72,20 +44,10 @@
 		searchError = '';
 		try {
 			const res = await fetch(`/api/recipes/search?q=${encodeURIComponent(query.trim())}`);
-			const data = await res.json() as {
-				recipes?: NemligRecipe[];
-				numFound?: number;
-				error?: string;
-			};
-
-			if (!res.ok) {
-				searchError = data.error ?? `Error ${res.status}`;
-				searchStatus = 'error';
-				return;
-			}
-
-			searchResults = data.recipes ?? [];
-			numFound = data.numFound ?? searchResults.length;
+			const body = await res.json() as { recipes?: NemligRecipe[]; numFound?: number; error?: string };
+			if (!res.ok) { searchError = body.error ?? `Error ${res.status}`; searchStatus = 'error'; return; }
+			searchResults = body.recipes ?? [];
+			numFound = body.numFound ?? searchResults.length;
 			searchStatus = 'done';
 		} catch {
 			searchError = 'Search failed. Check your connection and try again.';
@@ -102,23 +64,7 @@
 			favorites = favorites.filter((f) => f.recipeId !== id);
 			await fetch(`/api/recipes/favorites?id=${encodeURIComponent(id)}`, { method: 'DELETE' });
 		} else {
-			// Carry over any deselections + sort order made while browsing search results
-			const ephemeralDeselected = searchDeselected.get(id);
-			const deselectedIngredientIds = ephemeralDeselected ? [...ephemeralDeselected] : [];
-			const sortOrder = searchSortOrder.get(id) ?? 'default';
-
-			const fav: FavoriteRecipe = {
-				recipeId: id,
-				name: recipe.name,
-				description: recipe.description ?? null,
-				imageUrl: recipe.imageUrl ?? null,
-				preparationTime: recipe.preparationTime ?? null,
-				url: recipe.url ?? null,
-				sortOrder,
-				deselectedIngredientIds,
-			};
-			favorites = [...favorites, fav];
-			await fetch('/api/recipes/favorites', {
+			const res = await fetch('/api/recipes/favorites', {
 				method: 'POST',
 				headers: { 'content-type': 'application/json' },
 				body: JSON.stringify({
@@ -128,80 +74,15 @@
 					imageUrl: recipe.imageUrl ?? undefined,
 					preparationTime: recipe.preparationTime ?? undefined,
 					url: recipe.url ?? undefined,
-					sortOrder,
-					deselectedIngredientIds,
+					sortOrder: defaultSortOrder,
+					persons,
 				}),
 			});
+			if (res.ok) {
+				const fav = await res.json() as FavoriteRecipe;
+				favorites = [...favorites, fav];
+			}
 		}
-	}
-
-	// ── Deselection + sort order persistence ─────────────────────────────────
-	//
-	// One debounce timer per recipe. Both deselection and sort-order changes
-	// update the local favorites state immediately and schedule a single
-	// upsert that writes the latest values of both dimensions.
-
-	const prefTimers = new Map<string, ReturnType<typeof setTimeout>>();
-
-	function schedulePersist(recipeId: string) {
-		const prev = prefTimers.get(recipeId);
-		if (prev) clearTimeout(prev);
-		prefTimers.set(
-			recipeId,
-			setTimeout(() => {
-				prefTimers.delete(recipeId);
-				persistFavoritePrefs(recipeId);
-			}, 600)
-		);
-	}
-
-	function onDeselectionChange(recipeId: string, deselectedIds: string[]) {
-		if (favoriteIds.has(recipeId)) {
-			favorites = favorites.map((f) =>
-				f.recipeId === recipeId ? { ...f, deselectedIngredientIds: deselectedIds } : f
-			);
-			schedulePersist(recipeId);
-		} else {
-			// Search result — keep in ephemeral map
-			const next = new Map(searchDeselected);
-			next.set(recipeId, new Set(deselectedIds));
-			searchDeselected = next;
-		}
-	}
-
-	// ── Sort order ────────────────────────────────────────────────────────────
-
-	function onSortOrderChange(recipeId: string, newSortOrder: RecipeSortOrder) {
-		if (favoriteIds.has(recipeId)) {
-			favorites = favorites.map((f) =>
-				f.recipeId === recipeId ? { ...f, sortOrder: newSortOrder } : f
-			);
-			schedulePersist(recipeId);
-		} else {
-			// Search result — keep in ephemeral map
-			const next = new Map(searchSortOrder);
-			next.set(recipeId, newSortOrder);
-			searchSortOrder = next;
-		}
-	}
-
-	async function persistFavoritePrefs(recipeId: string) {
-		const fav = favorites.find((f) => f.recipeId === recipeId);
-		if (!fav) return;
-		await fetch('/api/recipes/favorites', {
-			method: 'POST',
-			headers: { 'content-type': 'application/json' },
-			body: JSON.stringify({
-				recipeId: fav.recipeId,
-				name: fav.name,
-				description: fav.description ?? undefined,
-				imageUrl: fav.imageUrl ?? undefined,
-				preparationTime: fav.preparationTime ?? undefined,
-				url: fav.url ?? undefined,
-				sortOrder: fav.sortOrder ?? 'default',
-				deselectedIngredientIds: fav.deselectedIngredientIds ?? [],
-			}),
-		});
 	}
 
 	// ── Basket ────────────────────────────────────────────────────────────────
@@ -215,40 +96,40 @@
 		}
 	}
 
-	/**
-	 * Add a single recipe directly to the nemlig basket using the AddRecipeToBasket endpoint.
-	 * Called by RecipeCard after the user confirms persons count.
-	 */
-	async function addRecipeToBasket(
-		recipe: NemligRecipe | FavoriteRecipe,
-		sortOrder: RecipeSortOrder,
-		selectedProducts: { ProductSelectionId: string; ProductSelectionName: string; ProductId: string; Quantity: number }[],
-		numPersons: number,
-	): Promise<void> {
-		const id = 'recipeId' in recipe ? recipe.recipeId : recipe.id;
+	async function addRecipeToBasket(recipe: FavoriteRecipe): Promise<void> {
+		const anchor = recipe.anchorProductSelectionId;
+		if (!anchor) throw new Error('No anchor product selection ID');
+
+		const activeIngredients = recipe.ingredients.filter((i) => !i.isDeselected);
+
+		if (activeIngredients.length === 0) throw new Error('No active ingredients');
+
+		const selectedProducts = activeIngredients.map((i) => ({
+			ProductSelectionId: anchor,
+			ProductSelectionName: i.productName,
+			ProductId: i.productId,
+			Quantity: i.quantity,
+		}));
 
 		const res = await fetch('/api/nemlig/basket/AddRecipeToBasket', {
 			method: 'POST',
 			headers: { 'content-type': 'application/json' },
 			body: JSON.stringify({
-				RecipeId: id,
-				NumberOfPeople: String(numPersons),
-				Sorting: sortOrder,
+				RecipeId: recipe.recipeId,
+				NumberOfPeople: '1',
+				Sorting: 'default',
 				SelectedProducts: selectedProducts,
 				SoldoutProducts: [],
 				SupplementProducts: [],
 			}),
 		});
 
-		if (!res.ok) {
-			throw new Error(`HTTP ${res.status}`);
-		}
+		if (!res.ok) throw new Error(`HTTP ${res.status}`);
 	}
 </script>
 
 <div class="py-6 space-y-8">
 
-	<!-- Page header -->
 	<div>
 		<h1 class="text-xl font-semibold text-zinc-900">Recipes</h1>
 		<p class="mt-1 text-sm text-zinc-500">Search for recipes on nemlig.com and save your favorites.</p>
@@ -280,7 +161,6 @@
 		/>
 	</div>
 
-	<!-- Search error -->
 	{#if searchStatus === 'error'}
 		<div class="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
 			{searchError}
@@ -296,19 +176,11 @@
 			</div>
 			<div class="grid grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-3">
 				{#each searchResults as recipe (recipe.id)}
-					<RecipeCard
-						{recipe}
-						{persons}
-						isFavorite={favoriteIds.has(recipe.id)}
-						deselectedIngredientIds={[...(searchDeselected.get(recipe.id) ?? [])]}
-						initialSortOrder={defaultSortOrder}
-						{showOptionalIngredients}
-						{basketAvailable}
-						onToggleFavorite={toggleFavorite}
-						onAddToBasket={addRecipeToBasket}
-						{onDeselectionChange}
-						{onSortOrderChange}
-					/>
+				<SearchRecipeCard
+					{recipe}
+					isFavorite={favoriteIds.has(recipe.id)}
+					onToggleFavorite={toggleFavorite}
+				/>
 				{/each}
 			</div>
 		</section>
@@ -316,7 +188,6 @@
 		<p class="text-sm text-zinc-500">No recipes found for "<strong>{query}</strong>".</p>
 	{/if}
 
-	<!-- Divider when both sections visible -->
 	{#if (searchStatus === 'done' && searchResults.length > 0) && favorites.length > 0}
 		<hr class="border-zinc-200" />
 	{/if}
@@ -338,17 +209,11 @@
 		{:else}
 			<div class="grid grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-3">
 				{#each favorites as fav (fav.recipeId)}
-					<RecipeCard
+					<FavoriteRecipeCard
 						recipe={fav}
-						{persons}
-						isFavorite={true}
-						deselectedIngredientIds={fav.deselectedIngredientIds ?? []}
-						{showOptionalIngredients}
 						{basketAvailable}
 						onToggleFavorite={toggleFavorite}
 						onAddToBasket={addRecipeToBasket}
-						{onDeselectionChange}
-						{onSortOrderChange}
 					/>
 				{/each}
 			</div>

@@ -5,7 +5,7 @@ import { userSettings } from '$lib/schema';
 
 // Keys that clients are permitted to read and write.
 // Prevents arbitrary data accumulating in the settings table.
-const ALLOWED_KEYS = new Set(['persons', 'defaultSortOrder', 'showOptionalIngredients']);
+const ALLOWED_KEYS = new Set(['persons', 'defaultSortOrder']);
 
 // GET /api/settings — return all settings as a key→value map
 export const GET: RequestHandler = async () => {

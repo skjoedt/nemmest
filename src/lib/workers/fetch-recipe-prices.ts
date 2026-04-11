@@ -1,91 +1,82 @@
 import { db } from '$lib/db';
-import { recipeFavorites, recipePriceHistory } from '$lib/schema';
-import { NEMLIG_BASE_URL, NEMLIG_STATIC_HEADERS } from '$lib/nemlig';
+import { recipeFavorites, recipeIngredients, recipePriceHistory } from '$lib/schema';
 import { logger } from '$lib/logger';
-import { parseSortOrder, type RecipeSortOrder } from '$lib/types';
-import { getSettings, parsePersonsSetting } from '$lib/settings';
+import { fetchProductPrice } from '$lib/nemlig';
 
 const log = logger.withTag('worker:recipe-prices');
 
-// Minimal shape from GetProductSelections — only the fields needed for price summing.
-interface RawProductSelection {
-	IsSupplementProduct: boolean;
-	Product: { PriceForCurrentRecipe: number } | null;
+const FETCH_DELAY_MS = 200;
+
+function sleep(ms: number): Promise<void> {
+	return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-interface RawGetProductSelectionsResponse {
-	Products?: RawProductSelection[];
-}
-
-// Returns null on any network or parse error so the caller can skip gracefully.
-async function fetchRecipeTotal(
-	recipeId: string,
-	sortOrder: RecipeSortOrder,
-	persons: number,
-): Promise<number | null> {
-	const url = new URL(`${NEMLIG_BASE_URL}/x/x/1/1/Recipe/GetProductSelections`);
-	url.searchParams.set('recipeId', recipeId);
-	url.searchParams.set('sortorder', sortOrder);
-	url.searchParams.set('personsAmount', String(persons));
-
-	let data: RawGetProductSelectionsResponse;
-	try {
-		const res = await fetch(url.toString(), {
-			headers: { ...NEMLIG_STATIC_HEADERS, 'x-correlation-id': crypto.randomUUID() },
-		});
-		if (!res.ok) {
-			log.error(`Upstream error ${res.status} for recipeId=${recipeId}`);
-			return null;
-		}
-		data = (await res.json()) as RawGetProductSelectionsResponse;
-	} catch (e) {
-		log.error(`Failed to fetch recipeId=${recipeId}:`, e);
-		return null;
-	}
-
-	return (data.Products ?? [])
-		.filter((p) => !p.IsSupplementProduct && p.Product !== null)
-		.reduce((sum, p) => sum + p.Product!.PriceForCurrentRecipe, 0);
-}
-
-// Inserts one row per recipe per day; duplicate runs are idempotent via the
-// unique index on (recipe_id, persons, sort_order, fetched_at::date).
 export async function fetchRecipePrices(): Promise<void> {
 	log.info('Starting daily recipe price fetch');
 
-	const [favoriteRows, settings] = await Promise.all([
-		db.select().from(recipeFavorites),
-		getSettings(),
-	]);
+	const favoriteRows = await db.select().from(recipeFavorites);
 
 	if (favoriteRows.length === 0) {
 		log.info('No favorite recipes — nothing to fetch');
 		return;
 	}
 
-	const persons = parsePersonsSetting(settings);
-	log.info(`Fetching prices for ${favoriteRows.length} recipes at persons=${persons}`);
+	// Load all active (non-deselected) ingredients, grouped by recipe
+	const allIngredients = await db.select().from(recipeIngredients);
+	const ingredientsByRecipe = new Map<string, typeof allIngredients>();
+	for (const i of allIngredients) {
+		if (i.isDeselected) continue;
+		const list = ingredientsByRecipe.get(i.recipeId) ?? [];
+		list.push(i);
+		ingredientsByRecipe.set(i.recipeId, list);
+	}
+
+	log.info(`Fetching prices for ${favoriteRows.length} recipes`);
 
 	let succeeded = 0;
 	let skipped = 0;
-	let failed = 0;
 
 	for (const recipe of favoriteRows) {
-		const sortOrder = parseSortOrder(recipe.sortOrder);
+		const ingredients = ingredientsByRecipe.get(recipe.recipeId) ?? [];
 
-		log.debug(`Fetching recipeId=${recipe.recipeId} sortOrder=${sortOrder} persons=${persons}`);
-
-		const total = await fetchRecipeTotal(recipe.recipeId, sortOrder, persons);
-
-		if (total === null) {
-			log.warn(`Skipping recipeId=${recipe.recipeId} — fetch failed`);
-			failed++;
+		if (ingredients.length === 0) {
+			log.warn(`recipeId=${recipe.recipeId} — no active ingredients, skipping`);
+			skipped++;
 			continue;
+		}
+
+		log.debug(`recipeId=${recipe.recipeId} — fetching ${ingredients.length} ingredient prices`);
+
+		let total = 0;
+		let fetchFailed = false;
+
+		for (const ing of ingredients) {
+			if (!ing.productUrl) {
+				log.warn(`ingredient id=${ing.id} has no productUrl, using stored price`);
+				total += parseFloat(ing.price) * ing.quantity;
+				fetchFailed = true;
+				continue;
+			}
+
+			await sleep(FETCH_DELAY_MS);
+
+			const price = await fetchProductPrice(ing.productUrl);
+			if (price === null) {
+				log.warn(`ingredient id=${ing.id} productUrl=${ing.productUrl} — price fetch failed, using stored price`);
+				total += parseFloat(ing.price) * ing.quantity;
+				fetchFailed = true;
+			} else {
+				total += price * ing.quantity;
+			}
+		}
+
+		if (fetchFailed) {
+			log.warn(`recipeId=${recipe.recipeId} — using partial prices`);
 		}
 
 		const result = await db
 			.insert(recipePriceHistory)
-			.values({ recipeId: recipe.recipeId, price: total.toFixed(2), persons, sortOrder })
+			.values({ recipeId: recipe.recipeId, price: total.toFixed(2) })
 			.onConflictDoNothing()
 			.returning({ id: recipePriceHistory.id });
 
@@ -98,5 +89,5 @@ export async function fetchRecipePrices(): Promise<void> {
 		}
 	}
 
-	log.info(`Done — ${succeeded} recorded, ${skipped} already existed today, ${failed} failed`);
+	log.info(`Done — ${succeeded} recorded, ${skipped} skipped`);
 }

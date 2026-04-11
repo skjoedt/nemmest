@@ -16,7 +16,8 @@ Users can easily add favorite products and meal plans to their nemlig.com shoppi
 - [x] Implement postgres database to store user favorites
 - [x] Create a product page with search and favoritize
 - [x] Create a recipe page with search and favoritize
-- [ ] Allow users to use custom baskets as recipes
-- [ ] Create a job schedule that fetches recipe price history
+- [x] Allow users to adjust ingredients of favorite recipes
+- [x] Create a job schedule that fetches recipe price history
+- [ ] Allow deletion of individual recipe line items in basket
 - [ ] Create an automated meal planner based on favorite recipes only
 - [ ] Add functionality to add mealplan, recipes or products to basket

@@ -1,33 +1,17 @@
 import type { PageServerLoad } from './$types';
 import { db } from '$lib/db';
-import { recipeFavorites, userSettings } from '$lib/schema';
-import type { FavoriteRecipe, RecipeSortOrder } from '$lib/types';
-import { VALID_SORT_ORDERS } from '$lib/types';
-import { decodeIds } from '$lib/recipe-utils';
+import { recipeFavorites, recipeIngredients, groupIngredientsByRecipe, toFavoriteRecipe } from '$lib/schema';
+import { getSettings } from '$lib/server/settings';
 
 export const load: PageServerLoad = async () => {
-	const [favoriteRows, settingRows] = await Promise.all([
+	const [favoriteRows, ingredientRows, settings] = await Promise.all([
 		db.select().from(recipeFavorites).orderBy(recipeFavorites.addedAt),
-		db.select().from(userSettings),
+		db.select().from(recipeIngredients).orderBy(recipeIngredients.sortOrder),
+		getSettings(),
 	]);
 
-	const favorites: FavoriteRecipe[] = favoriteRows.map((r) => ({
-		recipeId: r.recipeId,
-		name: r.name,
-		description: r.description,
-		imageUrl: r.imageUrl,
-		preparationTime: r.preparationTime,
-		url: r.url,
-		sortOrder: (VALID_SORT_ORDERS.has(r.sortOrder as RecipeSortOrder)
-			? r.sortOrder
-			: 'default') as RecipeSortOrder,
-		deselectedIngredientIds: decodeIds(r.deselectedIngredientIds),
-	}));
+	const byRecipe = groupIngredientsByRecipe(ingredientRows);
+	const favorites = favoriteRows.map((r) => toFavoriteRecipe(r, byRecipe.get(r.recipeId) ?? []));
 
-	const settingsMap: Record<string, string> = {};
-	for (const row of settingRows) {
-		settingsMap[row.key] = row.value;
-	}
-
-	return { favorites, settings: settingsMap };
+	return { favorites, settings };
 };

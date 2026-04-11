@@ -3,7 +3,8 @@
 // CombinedProductsAndSitecoreTimestamp, so we cache them here to avoid
 // issuing duplicate /Token requests from two separate module-level caches.
 
-import { NEMLIG_BASE_URL, NEMLIG_STATIC_HEADERS } from '$lib/nemlig';
+import { json } from '@sveltejs/kit';
+import { NEMLIG_BASE_URL, NEMLIG_SEARCH_GATEWAY_URL, NEMLIG_STATIC_HEADERS } from '$lib/nemlig';
 import { logger } from '$lib/logger';
 
 const log = logger.withTag('nemlig-context');
@@ -89,4 +90,61 @@ export async function getSearchContext(): Promise<SearchContext | null> {
 /** Invalidate the cached context (e.g. after a 401 from the gateway). */
 export function invalidateSearchContext(): void {
 	contextCache = null;
+}
+
+/**
+ * Fetches the nemlig search gateway with the given params.
+ * Handles context acquisition, JWT auth, 401 retry, and error responses.
+ * Returns the parsed JSON body on success, or a Response to forward on failure.
+ */
+export async function fetchSearchGateway(
+	params: Record<string, string>,
+): Promise<{ data: unknown } | { response: Response }> {
+	let ctx: SearchContext | null;
+	try {
+		ctx = await getSearchContext();
+	} catch {
+		return { response: json({ error: 'Could not reach nemlig.com' }, { status: 502 }) };
+	}
+	if (!ctx) {
+		return { response: json({ error: 'Could not retrieve nemlig.com search token' }, { status: 502 }) };
+	}
+
+	const searchUrl = new URL(NEMLIG_SEARCH_GATEWAY_URL);
+	for (const [k, v] of Object.entries(params)) searchUrl.searchParams.set(k, v);
+	searchUrl.searchParams.set('timestamp', ctx.timestamp);
+	if (ctx.timeslotUtc) searchUrl.searchParams.set('timeslotUtc', ctx.timeslotUtc);
+	searchUrl.searchParams.set('deliveryZoneId', String(ctx.deliveryZoneId));
+
+	const { 'content-type': _ct, ...gatewayHeaders } = NEMLIG_STATIC_HEADERS;
+
+	let res: Response;
+	try {
+		res = await fetch(searchUrl.toString(), {
+			headers: {
+				...gatewayHeaders,
+				Authorization: `Bearer ${ctx.jwt}`,
+				'x-correlation-id': crypto.randomUUID(),
+			},
+		});
+	} catch {
+		return { response: json({ error: 'Could not reach nemlig.com search' }, { status: 502 }) };
+	}
+
+	if (!res.ok) {
+		if (res.status === 401) {
+			invalidateSearchContext();
+			return { response: json({ error: 'Search token expired. Please try again.', reason: 'token_expired' }, { status: 401 }) };
+		}
+		const text = await res.text().catch(() => '');
+		log.error(`Gateway error ${res.status}:`, text.slice(0, 200));
+		return { response: json({ error: `Search error ${res.status}` }, { status: res.status }) };
+	}
+
+	try {
+		const data = await res.json();
+		return { data };
+	} catch {
+		return { response: json({ error: 'Invalid search response from nemlig.com' }, { status: 502 }) };
+	}
 }

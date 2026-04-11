@@ -15,7 +15,6 @@ export interface NemligProduct {
 	url: string | null;
 }
 
-// Shape used when rendering from DB favorites (no price fields)
 export interface FavoriteProduct {
 	productId: number;
 	name: string;
@@ -25,20 +24,18 @@ export interface FavoriteProduct {
 	url: string | null;
 }
 
-// A single line item in the nemlig.com basket (from GET /webapi/basket/GetBasket)
 export interface BasketLine {
 	Id: string;
 	Name: string;
 	Description: string | null;
 	PrimaryImage: string | null;
-	Price: number;         // line total (Price * Quantity)
-	ItemPrice: number;     // unit price
-	UnitPrice: string;     // formatted unit price, e.g. "15,00"
-	UnitPriceLabel: string; // e.g. "kr./Stk."
+	Price: number;
+	ItemPrice: number;
+	UnitPrice: string;
+	UnitPriceLabel: string;
 	Quantity: number;
 }
 
-// A single product line within a recipe in the basket
 export interface BasketRecipeLineItem {
 	Id: string;
 	Name: string;
@@ -50,7 +47,6 @@ export interface BasketRecipeLineItem {
 	Url: string | null;
 }
 
-// A recipe in the basket (from GET /webapi/basket/GetBasket → Recipes[])
 export interface BasketRecipe {
 	Id: string;
 	Title: string;
@@ -62,21 +58,15 @@ export interface BasketRecipe {
 	RecipeLineItems: BasketRecipeLineItem[];
 }
 
-// ── Recipe types ─────────────────────────────────────────────────────────────
-
-// A recipe from the Nemlig recipe search gateway
 export interface NemligRecipe {
-	id: string;           // UUID
+	id: string;
 	name: string;
 	description: string | null;
 	imageUrl: string | null;
-	preparationTime: number | null; // minutes
+	preparationTime: number | null;
 	url: string | null;
 }
 
-// Shape stored in recipe_favorites DB table.
-// description is always null — the Nemlig search gateway does not return one.
-// sortOrder is always present; the DB column has DEFAULT 'default' (migration 0003).
 export interface FavoriteRecipe {
 	recipeId: string;
 	name: string;
@@ -84,11 +74,25 @@ export interface FavoriteRecipe {
 	imageUrl: string | null;
 	preparationTime: number | null;
 	url: string | null;
-	sortOrder: RecipeSortOrder;
-	deselectedIngredientIds?: string[];
+	anchorProductSelectionId: string | null;
+	ingredients: FavoriteIngredient[];
 }
 
-// A single ingredient line from Recipe/GetProductSelections
+export interface FavoriteIngredient {
+	id: number;
+	recipeId: string;
+	productId: string;
+	productName: string;
+	productDescription: string | null;
+	productImageUrl: string | null;
+	productUrl: string | null;
+	quantity: number;
+	price: number;
+	isDeselected: boolean;
+	isCustom: boolean;
+	sortOrder: number;
+}
+
 export interface RecipeIngredient {
 	productSelectionId: string;
 	productGroupId: string;
@@ -104,14 +108,10 @@ export interface RecipeIngredient {
 	isNecessary: boolean;
 }
 
-// Sorting options for recipe product selections
 export type RecipeSortOrder = 'default' | 'recommended' | 'priceasc' | 'organic';
 
 export const VALID_SORT_ORDERS = new Set<RecipeSortOrder>([
-	'default',
-	'recommended',
-	'priceasc',
-	'organic',
+	'default', 'recommended', 'priceasc', 'organic',
 ]);
 
 export function parseSortOrder(raw: string | null | undefined): RecipeSortOrder {

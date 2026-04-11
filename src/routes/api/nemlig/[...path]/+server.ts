@@ -1,7 +1,7 @@
 import { json, error } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { NEMLIG_BASE_URL, buildUpstreamHeaders, getNemligCookieHeader, forwardCookies } from '$lib/nemlig';
-import { checkBurstLimit } from '$lib/rate-limit';
+import { enforceBurstLimit } from '$lib/rate-limit';
 import { logger } from '$lib/logger';
 
 const log = logger.withTag('nemlig/proxy');
@@ -9,13 +9,8 @@ const log = logger.withTag('nemlig/proxy');
 const FORWARD_RESPONSE_HEADERS = ['content-type', 'cache-control', 'etag', 'last-modified'];
 
 const handler: RequestHandler = async ({ request, params, cookies }) => {
-	const limit = checkBurstLimit();
-	if (!limit.ok) {
-		return json(
-			{ error: 'Too many requests', reason: 'rate_limited' },
-			{ status: 429, headers: { 'Retry-After': String(Math.ceil(limit.retryAfterMs / 1000)) } },
-		);
-	}
+	const limited = enforceBurstLimit();
+	if (limited) return limited;
 
 	const cookieHeader = getNemligCookieHeader(cookies);
 

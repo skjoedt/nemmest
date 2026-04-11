@@ -2,19 +2,16 @@
 	import { onMount, onDestroy } from 'svelte';
 	import uPlot from 'uplot';
 	import 'uplot/dist/uPlot.min.css';
-	import type { RecipeSortOrder } from '$lib/types';
 	import { formatPrice } from '$lib/format';
 
 	interface Props {
 		recipeId: string;
-		persons: number;
-		sortOrder: RecipeSortOrder;
 	}
 
-	let { recipeId, persons, sortOrder }: Props = $props();
+	let { recipeId }: Props = $props();
 
 	interface HistoryPoint {
-		date: string; // YYYY-MM-DD
+		date: string;
 		price: number;
 	}
 
@@ -30,12 +27,9 @@
 		status = 'loading';
 		try {
 			const res = await fetch(
-				`/api/recipes/price-history?recipeId=${encodeURIComponent(recipeId)}&persons=${persons}&sortOrder=${sortOrder}`,
+				`/api/recipes/price-history?recipeId=${encodeURIComponent(recipeId)}`,
 			);
-			if (!res.ok) {
-				status = 'error';
-				return;
-			}
+			if (!res.ok) { status = 'error'; return; }
 			const data = (await res.json()) as { history: HistoryPoint[]; low30: number | null };
 			history = data.history;
 			low30 = data.low30;
@@ -46,13 +40,9 @@
 	}
 
 	function buildChart(el: HTMLDivElement) {
-		if (chart) {
-			chart.destroy();
-			chart = null;
-		}
+		if (chart) { chart.destroy(); chart = null; }
 		if (history.length === 0) return;
 
-		// uPlot expects unix timestamps (seconds) for the x-axis
 		const xs = history.map((p) => Date.parse(p.date) / 1000);
 		const ys = history.map((p) => p.price);
 
@@ -67,13 +57,11 @@
 			legend: { show: false },
 			scales: {
 				x: { time: true },
-				y: {
-					range: [Math.max(0, minPrice - padding), maxPrice + padding],
-				},
+				y: { range: [Math.max(0, minPrice - padding), maxPrice + padding] },
 			},
-		axes: [
-			{
-				stroke: '#a1a1aa',
+			axes: [
+				{
+					stroke: '#a1a1aa',
 					ticks: { stroke: '#e4e4e7', width: 1 },
 					grid: { stroke: '#f4f4f5', width: 1 },
 					values: (_, ticks) =>
@@ -85,11 +73,11 @@
 					font: '11px system-ui, sans-serif',
 					labelFont: '11px system-ui, sans-serif',
 				},
-			{
-				stroke: '#a1a1aa',
-				ticks: { stroke: '#e4e4e7', width: 1 },
-				grid: { stroke: '#f4f4f5', width: 1 },
-				values: (_, ticks) => ticks.map((v) => `${v.toFixed(0)}`),
+				{
+					stroke: '#a1a1aa',
+					ticks: { stroke: '#e4e4e7', width: 1 },
+					grid: { stroke: '#f4f4f5', width: 1 },
+					values: (_, ticks) => ticks.map((v) => `${v.toFixed(0)}`),
 					size: 40,
 					font: '11px system-ui, sans-serif',
 					labelFont: '11px system-ui, sans-serif',
@@ -109,23 +97,16 @@
 		chart = new uPlot(opts, [xs, ys], el);
 	}
 
-	// Rebuild chart whenever the DOM element is ready and we have data
 	$effect(() => {
 		if (status === 'done' && chartEl) {
-			// Small tick to let the DOM settle after the status transition
 			requestAnimationFrame(() => {
 				if (chartEl) buildChart(chartEl);
 			});
 		}
 	});
 
-	onMount(() => {
-		loadHistory();
-	});
-
-	onDestroy(() => {
-		chart?.destroy();
-	});
+	onMount(() => { loadHistory(); });
+	onDestroy(() => { chart?.destroy(); });
 </script>
 
 <div class="mt-3 border-t border-zinc-100 pt-3">

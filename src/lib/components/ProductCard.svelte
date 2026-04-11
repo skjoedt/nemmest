@@ -1,5 +1,6 @@
 <script lang="ts">
 	import type { NemligProduct, FavoriteProduct } from '$lib/types';
+	import { formatPrice } from '$lib/format';
 
 	interface Props {
 		product: NemligProduct | FavoriteProduct;
@@ -15,49 +16,46 @@
 
 	let { product, isFavorite, showPrice = true, basketQty, onToggleFavorite, onBasketChange }: Props = $props();
 
-	// Normalise: both NemligProduct (id: string) and FavoriteProduct (productId: number)
-	// expose the fields we need. Use $derived so these update if the prop changes.
-	// Discriminate by 'price' — NemligProduct has it, FavoriteProduct does not.
-	// Can't use 'id' because the DB row also includes an 'id' serial PK column.
-	const productId = $derived('price' in product
-		? parseInt(product.id, 10)
-		: product.productId);
-
-	const name = $derived(product.name);
-	const description = $derived(product.description ?? null);
-	const imageUrl = $derived(product.imageUrl ?? null);
-	const brand = $derived(product.brand ?? null);
-
-	// Price fields only exist on NemligProduct
-	const price = $derived('price' in product ? product.price : null);
-	const campaignPrice = $derived('campaignPrice' in product ? product.campaignPrice : null);
-	const discountSavings = $derived('discountSavings' in product ? product.discountSavings : null);
-	const unitPrice = $derived('unitPrice' in product ? product.unitPrice : null);
-	const isOnSale = $derived('isOnSale' in product ? product.isOnSale : false);
-	const productUrl = $derived('url' in product ? product.url : null);
+	// Normalise the union into a flat view. Discriminate by 'price' which only NemligProduct has.
+	const p = $derived.by(() => {
+		if ('price' in product) {
+			return {
+				productId: parseInt(product.id, 10),
+				name: product.name,
+				description: product.description,
+				imageUrl: product.imageUrl,
+				brand: product.brand,
+				price: product.price,
+				campaignPrice: product.campaignPrice,
+				discountSavings: product.discountSavings,
+				unitPrice: product.unitPrice,
+				isOnSale: product.isOnSale,
+			};
+		}
+		return {
+			productId: product.productId,
+			name: product.name,
+			description: product.description,
+			imageUrl: product.imageUrl,
+			brand: product.brand,
+			price: null as number | null,
+			campaignPrice: null as number | null,
+			discountSavings: null as number | null,
+			unitPrice: null as string | null,
+			isOnSale: false,
+		};
+	});
 
 	const inBasket = $derived(basketQty !== undefined && basketQty > 0);
-
-	function formatPrice(p: number): string {
-		// Danish format: "33,95" → show as "33,95"
-		// Nemlig prices are floats like 33.95
-		const [int, dec] = p.toFixed(2).split('.');
-		return dec === '00' ? `${int}` : `${int},${dec}`;
-	}
-
-	function formatSavings(s: number): string {
-		if (Number.isInteger(s)) return `${s},-`;
-		return `${formatPrice(s)}`;
-	}
 </script>
 
 <div class="group relative flex flex-col rounded-xl border border-zinc-200 bg-white overflow-hidden transition-shadow hover:shadow-md">
 	<!-- Image area -->
 	<div class="relative bg-zinc-50 aspect-square overflow-hidden">
-		{#if imageUrl}
+		{#if p.imageUrl}
 			<img
-				src={imageUrl}
-				alt={name}
+				src={p.imageUrl}
+				alt={p.name}
 				class="w-full h-full object-contain p-3"
 				loading="lazy"
 			/>
@@ -72,7 +70,7 @@
 		{/if}
 
 		<!-- Campaign badge -->
-		{#if showPrice && isOnSale && discountSavings}
+		{#if showPrice && p.isOnSale && p.discountSavings}
 			<div class="absolute top-2 right-2 bg-orange-500 text-white text-xs font-bold rounded-full w-12 h-12 flex flex-col items-center justify-center leading-tight shadow">
 				<span class="text-[9px] font-semibold">Køb flere,</span>
 				<span class="text-[9px] font-semibold">spar mere</span>
@@ -82,56 +80,52 @@
 
 	<!-- Card body -->
 	<div class="flex flex-col gap-1 p-3 flex-1">
-		<!-- Name -->
-		<p class="text-sm font-semibold text-zinc-900 leading-snug line-clamp-2">{name}</p>
+		<p class="text-sm font-semibold text-zinc-900 leading-snug line-clamp-2">{p.name}</p>
 
-		<!-- Description / brand -->
-		{#if description || brand}
+		{#if p.description || p.brand}
 			<p class="text-xs text-zinc-500 leading-snug line-clamp-2">
-				{#if description}{description}{/if}
+				{#if p.description}{p.description}{/if}
 			</p>
 		{/if}
 		<div class="mt-auto pt-2 flex items-end justify-between gap-2">
 			<!-- Price block — only for search results -->
-			{#if showPrice && price !== null}
+			{#if showPrice && p.price !== null}
 				<div>
-					{#if isOnSale && campaignPrice !== null}
+					{#if p.isOnSale && p.campaignPrice !== null}
 						<div class="flex items-baseline gap-1.5">
-							<span class="text-xl font-black text-orange-500">{formatPrice(campaignPrice)}</span>
-							<span class="text-sm text-zinc-400 line-through">{formatPrice(price)}</span>
+							<span class="text-xl font-black text-orange-500">{formatPrice(p.campaignPrice)}</span>
+							<span class="text-sm text-zinc-400 line-through">{formatPrice(p.price)}</span>
 						</div>
 					{:else}
-						<span class="text-xl font-black text-zinc-900">{formatPrice(price)}</span>
+						<span class="text-xl font-black text-zinc-900">{formatPrice(p.price)}</span>
 					{/if}
-					{#if unitPrice}
-						<p class="text-[10px] text-zinc-400">{unitPrice}</p>
+					{#if p.unitPrice}
+						<p class="text-[10px] text-zinc-400">{p.unitPrice}</p>
 					{/if}
 				</div>
 			{/if}
 
 			<!-- Basket control -->
 			{#if inBasket}
-				<!-- Stepper: − qty + -->
 				<div class="flex-shrink-0 flex items-center rounded-full border border-zinc-200 bg-white overflow-hidden h-9">
 					<button
 						type="button"
-						onclick={() => onBasketChange!(productId, basketQty! - 1)}
+						onclick={() => onBasketChange!(p.productId, basketQty! - 1)}
 						aria-label="Remove one from basket"
 						class="flex items-center justify-center w-9 h-full text-zinc-600 hover:bg-zinc-100 transition-colors text-lg font-medium"
 					>−</button>
 					<span class="min-w-[1.5rem] text-center text-sm font-semibold text-zinc-900 px-0.5 select-none">{basketQty}</span>
 					<button
 						type="button"
-						onclick={() => onBasketChange!(productId, basketQty! + 1)}
+						onclick={() => onBasketChange!(p.productId, basketQty! + 1)}
 						aria-label="Add one to basket"
 						class="flex items-center justify-center w-9 h-full text-zinc-600 hover:bg-zinc-100 transition-colors text-lg font-medium"
 					>+</button>
 				</div>
 			{:else if onBasketChange}
-				<!-- Authenticated, not in basket: active cart button -->
 				<button
 					type="button"
-					onclick={() => onBasketChange(productId, 1)}
+					onclick={() => onBasketChange(p.productId, 1)}
 					title="Add to basket"
 					aria-label="Add to basket"
 					class="flex-shrink-0 flex items-center justify-center w-9 h-9 rounded-full
@@ -144,7 +138,6 @@
 					</svg>
 				</button>
 			{:else}
-				<!-- Not authenticated: disabled cart button -->
 				<button
 					type="button"
 					title="Add to basket"

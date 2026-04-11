@@ -1,14 +1,8 @@
-import { json, error } from '@sveltejs/kit';
+import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
-import { NEMLIG_STATIC_HEADERS } from '$lib/nemlig';
-import { getSearchContext, invalidateSearchContext } from '$lib/nemlig-context';
-import { checkBurstLimit } from '$lib/rate-limit';
+import { fetchSearchGateway } from '$lib/nemlig-context';
+import { enforceBurstLimit } from '$lib/rate-limit';
 import type { NemligProduct } from '$lib/types';
-import { logger } from '$lib/logger';
-
-const log = logger.withTag('products/search');
-
-const GATEWAY_SEARCH = 'https://webapi.prod.knl.nemlig.it/searchgateway/api/search';
 
 // ── Gateway product shape ─────────────────────────────────────────────────────
 
@@ -73,75 +67,21 @@ function normalizeProduct(p: GatewayProduct): NemligProduct {
 
 export const GET: RequestHandler = async ({ url }) => {
 	const q = url.searchParams.get('q')?.trim() ?? '';
-	if (q.length < 2) {
-		return json({ products: [], numFound: 0 });
-	}
+	if (q.length < 2) return json({ products: [], numFound: 0 });
 
-	const limit = checkBurstLimit();
-	if (!limit.ok) {
-		return json(
-			{ error: 'Too many requests', reason: 'rate_limited' },
-			{ status: 429, headers: { 'Retry-After': String(Math.ceil(limit.retryAfterMs / 1000)) } },
-		);
-	}
+	const limited = enforceBurstLimit();
+	if (limited) return limited;
 
-	let ctx: Awaited<ReturnType<typeof getSearchContext>>;
-	try {
-		ctx = await getSearchContext();
-	} catch (e) {
-		log.error('Failed to build search context:', e);
-		return json({ error: 'Could not reach nemlig.com' }, { status: 502 });
-	}
+	const page = parseInt(url.searchParams.get('page') ?? '0', 10);
+	const result = await fetchSearchGateway({
+		query: q,
+		take: '24',
+		skip: String(page * 24),
+	});
 
-	if (!ctx) {
-		return json({ error: 'Could not retrieve nemlig.com search token' }, { status: 502 });
-	}
+	if ('response' in result) return result.response;
 
-	const searchUrl = new URL(GATEWAY_SEARCH);
-	searchUrl.searchParams.set('query', q);
-	searchUrl.searchParams.set('take', '24');
-	searchUrl.searchParams.set('skip', String((parseInt(url.searchParams.get('page') ?? '0', 10)) * 24));
-	searchUrl.searchParams.set('timestamp', ctx.timestamp);
-	if (ctx.timeslotUtc) searchUrl.searchParams.set('timeslotUtc', ctx.timeslotUtc);
-	searchUrl.searchParams.set('deliveryZoneId', String(ctx.deliveryZoneId));
-
-	let gatewayRes: Response;
-	try {
-		// Omit content-type on this GET — the gateway interprets it as expecting
-		// a JSON body and returns 400 "does not contain JSON tokens" if present.
-		const { 'content-type': _ct, ...gatewayHeaders } = NEMLIG_STATIC_HEADERS;
-		gatewayRes = await fetch(searchUrl.toString(), {
-			headers: {
-				...gatewayHeaders,
-				'Authorization': `Bearer ${ctx.jwt}`,
-				'x-correlation-id': crypto.randomUUID(),
-			},
-		});
-	} catch (e) {
-		log.error('Gateway fetch error:', e);
-		error(502, 'Could not reach nemlig.com search');
-	}
-
-	if (!gatewayRes.ok) {
-		if (gatewayRes.status === 401) {
-			// JWT expired — invalidate cache and retry on next request
-			log.warn('JWT expired, invalidating context cache');
-			invalidateSearchContext();
-			return json({ error: 'Search token expired. Please try again.', reason: 'token_expired' }, { status: 401 });
-		}
-		const text = await gatewayRes.text().catch(() => '');
-		log.error(`Gateway error ${gatewayRes.status}:`, text.slice(0, 200));
-		return json({ error: `Search error ${gatewayRes.status}` }, { status: gatewayRes.status });
-	}
-
-	let data: GatewaySearchResponse | null = null;
-	try {
-		data = await gatewayRes.json() as GatewaySearchResponse;
-	} catch (e) {
-		log.error('JSON parse error:', e);
-		return json({ error: 'Invalid search response from nemlig.com' }, { status: 502 });
-	}
-
+	const data = result.data as GatewaySearchResponse;
 	const products = data?.Products?.Products ?? [];
 	const numFound = data?.Products?.NumFound ?? products.length;
 
