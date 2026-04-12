@@ -1,14 +1,30 @@
 services:
   db:
     image: postgres:17-alpine
+    restart: unless-stopped
     environment:
       POSTGRES_DB: nemmest
       POSTGRES_USER: nemmest
-      POSTGRES_PASSWORD: nemmest
-    ports:
-      - '5432:5432'
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-nemmest}
     volumes:
       - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U nemmest -d nemmest']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  app:
+    build: .
+    restart: unless-stopped
+    ports:
+      - '${PORT:-3000}:3000'
+    environment:
+      DATABASE_URL: postgres://nemmest:${POSTGRES_PASSWORD:-nemmest}@db:5432/nemmest
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+    depends_on:
+      db:
+        condition: service_healthy
 
 volumes:
   postgres_data:

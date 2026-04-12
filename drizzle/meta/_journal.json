@@ -8,48 +8,6 @@
       "when": 1774527719135,
       "tag": "0000_init",
       "breakpoints": true
-    },
-    {
-      "idx": 1,
-      "version": "7",
-      "when": 1774527720000,
-      "tag": "0001_recipes",
-      "breakpoints": true
-    },
-    {
-      "idx": 2,
-      "version": "7",
-      "when": 1774527730000,
-      "tag": "0002_recipe_deselected",
-      "breakpoints": true
-    },
-    {
-      "idx": 3,
-      "version": "7",
-      "when": 1774527740000,
-      "tag": "0003_recipe_sort_order",
-      "breakpoints": true
-    },
-    {
-      "idx": 4,
-      "version": "7",
-      "when": 1774527750000,
-      "tag": "0004_recipe_price_history",
-      "breakpoints": true
-    },
-    {
-      "idx": 5,
-      "version": "7",
-      "when": 1774527760000,
-      "tag": "0005_recipe_ingredients",
-      "breakpoints": true
-    },
-    {
-      "idx": 6,
-      "version": "7",
-      "when": 1774527770000,
-      "tag": "0006_ingredient_description",
-      "breakpoints": true
     }
   ]
 }
