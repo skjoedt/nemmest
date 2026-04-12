@@ -1,20 +1,38 @@
 [tools]
 node = "25"
 
+[tasks.install]
+run = "npm install"
+description = "Install Node dependencies"
+
 [tasks.dev]
 run = "npm run dev"
+description = "Start development server"
 
 [tasks.build]
 run = "npm run build"
+description = "Build for production"
 
 [tasks.preview]
 run = "npm run preview"
+description = "Preview production build locally"
 
 [tasks.check]
 run = "npm run check"
+description = "Run Svelte type checker"
+
+[tasks."db:start"]
+run = "docker compose -f docker-compose.dev.yml up -d"
+description = "Start development database"
+
+[tasks."db:stop"]
+run = "docker compose -f docker-compose.dev.yml down"
+description = "Stop development database"
 
 [tasks."db:generate"]
 run = "drizzle-kit generate"
+description = "Generate a migration from schema changes"
 
 [tasks."db:migrate"]
 run = "drizzle-kit migrate"
+description = "Apply pending migrations"
