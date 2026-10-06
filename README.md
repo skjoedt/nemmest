@@ -124,6 +124,33 @@ When running via Docker Compose, `DATABASE_URL` is automatically constructed fro
 
 ---
 
+## Live Agent Session
+
+The live agent session lets a local AI agent diagnose real nemlig.com behavior through the local Nemmest API. It is not a test suite: the agent can inspect and mutate the same local database and basket that the running instance uses.
+
+1. Start Nemmest normally, including Docker Compose if that is your usual setup. The request tool defaults to `http://127.0.0.1:5173`; use `NEMMEST_BASE_URL=http://127.0.0.1:3000` for the default Docker port.
+2. Install the Playwright browser once:
+
+   ```sh
+   npx playwright install chromium
+   ```
+
+3. Run `mise run live:login`, then complete the login on the local Settings page. The browser is used only for this manual login.
+
+The session is stored at `.nemmest-live-session/auth.json` in this repository with owner-only permissions. The directory is gitignored. Set `NEMMEST_LIVE_SESSION_STATE` to use another location. It is a bearer credential: do not commit, copy, or share it.
+
+After login, an agent can issue any local `/api/...` request with the saved session:
+
+```sh
+mise run live:request -- GET /api/nemlig/basket/GetBasket
+mise run live:request -- POST /api/nemlig/basket/AddToBasket --json '{"ProductId":"12345","quantity":1,"AffectPartialQuantity":true,"disableQuantityValidation":false}'
+mise run live:request -- POST /api/recipes/favorites --json-file /tmp/recipe.json
+```
+
+The command rejects non-loopback base URLs, never prints `Set-Cookie`, and writes any refreshed session cookies back to the state file. It returns the real HTTP response so an agent can inspect the effect of a code change and try another request. There are no fixture requirements, automatic cleanup, or route restrictions; the agent can invoke any API exposed by the local application, including destructive actions. Re-run `mise run live:login` when the nemlig.com session expires or is revoked.
+
+---
+
 ## Architecture
 
 Nemmest is a [SvelteKit](https://kit.svelte.dev/) 2 application using [Svelte 5](https://svelte.dev/) with runes, backed by [PostgreSQL](https://www.postgresql.org/) via [Drizzle ORM](https://orm.drizzle.team/).

@@ -21,6 +21,14 @@ description = "Preview production build locally"
 run = "npm run check"
 description = "Run Svelte type checker"
 
+[tasks."live:login"]
+run = "npm run live:login"
+description = "Capture a nemlig.com session from a manual local login"
+
+[tasks."live:request"]
+run = "npm run live:request --"
+description = "Send an authenticated request to the local Nemmest API"
+
 [tasks."db:start"]
 run = "docker compose -f docker-compose.dev.yml up -d"
 description = "Start development database"
