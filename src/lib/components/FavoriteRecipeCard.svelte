@@ -1,5 +1,12 @@
 <script lang="ts">
-	import type { FavoriteIngredient, FavoriteRecipe, NemligProduct } from '$lib/types';
+	import type {
+		FavoriteIngredient,
+		FavoriteRecipe,
+		IngredientAvailability,
+		NemligProduct,
+		RecipeAvailabilityResult,
+		RecipeBasketAddResult,
+	} from '$lib/types';
 	import IngredientRow from './IngredientRow.svelte';
 	import PriceHistoryChart from './PriceHistoryChart.svelte';
 	import { formatPrice, formatTime } from '$lib/format';
@@ -7,18 +14,49 @@
 	interface Props {
 		recipe: FavoriteRecipe;
 		basketAvailable: boolean;
+		availability: Record<number, IngredientAvailability>;
+		availabilityState: 'checking' | 'ready' | 'error';
 		onToggleFavorite: (recipe: FavoriteRecipe) => void;
-		onAddToBasket: (recipe: FavoriteRecipe) => Promise<void>;
+		onAddToBasket: (recipe: FavoriteRecipe) => Promise<RecipeBasketAddResult>;
+		onCheckAvailability: (recipeId: string) => Promise<RecipeAvailabilityResult[]>;
+		onRefreshAvailability: () => Promise<void>;
 	}
 
-	let { recipe, basketAvailable, onToggleFavorite, onAddToBasket }: Props = $props();
+	let {
+		recipe,
+		basketAvailable,
+		availability,
+		availabilityState,
+		onToggleFavorite,
+		onAddToBasket,
+		onCheckAvailability,
+		onRefreshAvailability,
+	}: Props = $props();
 
 	let ingredients = $state<FavoriteIngredient[]>(recipe.ingredients);
+	let latestAvailability = $state<Record<number, IngredientAvailability>>({});
+
+	function ingredientAvailability(ingredient: FavoriteIngredient): IngredientAvailability | undefined {
+		return latestAvailability[ingredient.id] ?? availability[ingredient.id];
+	}
+
+	function isUnavailable(ingredient: FavoriteIngredient): boolean {
+		const status = ingredientAvailability(ingredient)?.status;
+		return status ? status === 'unavailable' : ingredient.isUnavailable;
+	}
+
+	function isUnknown(ingredient: FavoriteIngredient): boolean {
+		return ingredientAvailability(ingredient)?.status === 'unknown';
+	}
 
 	const activeTotal = $derived(
 		ingredients
-			.filter((i) => !i.isDeselected)
+			.filter((i) => !i.isDeselected && !isUnavailable(i))
 			.reduce((sum, i) => sum + i.price * i.quantity, 0)
+	);
+	const unavailableCount = $derived(ingredients.filter((i) => isUnavailable(i)).length);
+	const hasBlockedIngredients = $derived(
+		ingredients.some((i) => !i.isDeselected && (isUnavailable(i) || isUnknown(i))),
 	);
 
 	let expanded = $state(false);
@@ -26,18 +64,90 @@
 
 	// ── Add to basket ─────────────────────────────────────────────────────────
 
-	type AddStatus = 'idle' | 'adding' | 'done' | 'error';
+	type AddStatus = 'idle' | 'checking' | 'adding' | 'done' | 'error';
 	let addStatus = $state<AddStatus>('idle');
+	let addResult = $state<RecipeBasketAddResult | null>(null);
+	let addError = $state('');
+
+	function storeAvailability(results: RecipeAvailabilityResult[]) {
+		const next = { ...latestAvailability };
+		for (const result of results) {
+			for (const ingredient of result.ingredients) {
+				next[ingredient.ingredientId] = ingredient;
+			}
+		}
+		latestAvailability = next;
+	}
+
+	function resultMessage(result: RecipeBasketAddResult): string {
+		const parts: string[] = [];
+		if (result.addedProductIds.length > 0) parts.push(`Added ${result.addedProductIds.length}`);
+		if (result.missingProductIds.length > 0) parts.push(`${result.missingProductIds.length} unavailable`);
+		if (result.failedProductIds.length > 0) parts.push(`${result.failedProductIds.length} failed`);
+		return parts.join(', ') || 'No products added';
+	}
 
 	async function handleAddToBasket() {
-		if (addStatus === 'adding') return;
-		addStatus = 'adding';
+		if (addStatus === 'checking' || addStatus === 'adding') return;
+		addStatus = 'checking';
+		addResult = null;
+		addError = '';
 		try {
-			await onAddToBasket({ ...recipe, ingredients });
-			addStatus = 'done';
-			setTimeout(() => { addStatus = 'idle'; }, 2000);
+			storeAvailability(await onCheckAvailability(recipe.recipeId));
+			if (hasBlockedIngredients) {
+				addStatus = 'error';
+				addError = 'Resolve unavailable products before adding';
+				setTimeout(() => { addStatus = 'idle'; }, 4000);
+				return;
+			}
+
+			addStatus = 'adding';
+			const result = await onAddToBasket({ ...recipe, ingredients });
+			addResult = result;
+
+			if (result.missingProductIds.length > 0) {
+				const missingIds = new Set(result.missingProductIds);
+				const missingIngredients = ingredients.filter((i) => missingIds.has(i.productId));
+				ingredients = ingredients.map((i) => missingIds.has(i.productId) ? { ...i, isUnavailable: true } : i);
+				latestAvailability = {
+					...latestAvailability,
+					...Object.fromEntries(missingIngredients.map((ingredient) => [ingredient.id, {
+						ingredientId: ingredient.id,
+						status: 'unavailable' as const,
+						replacement: null,
+						replacementUrl: null,
+					}])),
+				};
+
+				await Promise.all(missingIngredients.map((ingredient) =>
+					fetch('/api/recipes/ingredients', {
+						method: 'PUT',
+						headers: { 'content-type': 'application/json' },
+						body: JSON.stringify({ id: ingredient.id, isUnavailable: true }),
+					}),
+				));
+			}
+
+			addStatus = result.failedProductIds.length > 0 ? 'error' : 'done';
+			setTimeout(() => { addStatus = 'idle'; }, 4000);
 		} catch {
 			addStatus = 'error';
+			addResult = null;
+			addError = 'Could not check product availability';
+			setTimeout(() => { addStatus = 'idle'; }, 3000);
+		}
+	}
+
+	async function recheckAvailability() {
+		if (addStatus === 'checking' || addStatus === 'adding') return;
+		addStatus = 'checking';
+		addError = '';
+		try {
+			storeAvailability(await onCheckAvailability(recipe.recipeId));
+			addStatus = 'idle';
+		} catch {
+			addStatus = 'error';
+			addError = 'Could not check product availability';
 			setTimeout(() => { addStatus = 'idle'; }, 3000);
 		}
 	}
@@ -88,6 +198,7 @@
 	let searchResults = $state<NemligProduct[]>([]);
 	let searchStatus = $state<'idle' | 'loading' | 'done' | 'error'>('idle');
 	let searchDebounce: ReturnType<typeof setTimeout> | null = null;
+	let replacementTarget = $state<FavoriteIngredient | null>(null);
 
 	function onSearchInput() {
 		if (searchDebounce) clearTimeout(searchDebounce);
@@ -113,6 +224,15 @@
 	}
 
 	async function addCustomIngredient(product: NemligProduct) {
+		if (replacementTarget) {
+			await replaceIngredient(replacementTarget, product);
+			replacementTarget = null;
+			searchQuery = '';
+			searchResults = [];
+			searchStatus = 'idle';
+			return;
+		}
+
 		const res = await fetch('/api/recipes/ingredients', {
 			method: 'POST',
 			headers: { 'content-type': 'application/json' },
@@ -133,6 +253,30 @@
 			searchResults = [];
 			searchStatus = 'idle';
 		}
+	}
+
+	async function replaceIngredient(ingredient: FavoriteIngredient, replacement: NemligProduct) {
+		const res = await fetch('/api/recipes/ingredients', {
+			method: 'PUT',
+			headers: { 'content-type': 'application/json' },
+			body: JSON.stringify({ id: ingredient.id, replacement }),
+		});
+		if (!res.ok) return;
+
+		const updated = await res.json() as FavoriteIngredient;
+		ingredients = ingredients.map((i) => i.id === updated.id ? updated : i);
+		if (replacementTarget?.id === updated.id) replacementTarget = null;
+		latestAvailability = {
+			...latestAvailability,
+			[updated.id]: { ingredientId: updated.id, status: 'available', replacement: null, replacementUrl: null },
+		};
+	}
+
+	async function findSimilarProducts(ingredient: FavoriteIngredient) {
+		expanded = true;
+		replacementTarget = ingredient;
+		searchQuery = ingredient.productName;
+		await runSearch();
 	}
 </script>
 
@@ -187,6 +331,15 @@
 
 		<!-- Ingredient list -->
 		{#if expanded}
+			{#if unavailableCount > 0}
+				<div class="mt-2 rounded-lg border border-red-200 bg-red-50 px-2 py-1.5 text-xs text-red-800">
+					This recipe has products that are no longer available. Replace or remove them before adding to basket.
+				</div>
+			{:else if availabilityState === 'error' || ingredients.some((i) => !i.isDeselected && isUnknown(i))}
+				<div class="mt-2 rounded-lg border border-zinc-200 bg-zinc-50 px-2 py-1.5 text-xs text-zinc-700">
+					Product availability could not be confirmed. Adding is disabled until it can be checked.
+				</div>
+			{/if}
 			<div class="mt-1 border-t border-zinc-100 pt-2 space-y-0 max-h-80 overflow-y-auto -mx-1">
 				{#each ingredients as ing (ing.id)}
 					<IngredientRow
@@ -196,11 +349,16 @@
 						quantity={ing.quantity}
 						price={ing.price * ing.quantity}
 						isDeselected={ing.isDeselected}
+						isUnavailable={isUnavailable(ing)}
 						isCustom={ing.isCustom}
 						href={ing.productUrl}
+						replacement={ingredientAvailability(ing)?.replacement}
+						replacementUrl={ingredientAvailability(ing)?.replacementUrl}
 						onToggleDeselect={() => toggleDeselect(ing)}
 						onQuantityChange={(v) => onQuantityChange(ing, v)}
 						onRemove={() => removeIngredient(ing)}
+						onUseReplacement={(replacement) => replaceIngredient(ing, replacement)}
+						onFindSimilar={() => findSimilarProducts(ing)}
 					/>
 				{/each}
 
@@ -210,13 +368,16 @@
 
 				<!-- Total -->
 				<div class="px-1 pt-2 mt-1 border-t border-zinc-100 flex items-center justify-between">
-					<span class="text-xs text-zinc-500">Total</span>
+					<span class="text-xs text-zinc-500">Total{unavailableCount > 0 ? ` (${unavailableCount} unavailable)` : ''}</span>
 					<span class="text-sm font-bold text-zinc-900">{formatPrice(activeTotal)}</span>
 				</div>
 			</div>
 
 			<!-- Custom ingredient search -->
 			<div class="mt-3 border-t border-zinc-100 pt-3">
+				{#if replacementTarget}
+					<p class="mb-1 text-xs text-red-700">Choose a replacement for {replacementTarget.productName}</p>
+				{/if}
 				<div class="relative">
 					<div class="pointer-events-none absolute inset-y-0 left-2.5 flex items-center">
 						{#if searchStatus === 'loading'}
@@ -234,7 +395,7 @@
 						type="search"
 						bind:value={searchQuery}
 						oninput={onSearchInput}
-						placeholder="Add product…"
+						placeholder={replacementTarget ? 'Search replacement…' : 'Add product…'}
 						autocomplete="off"
 						class="block w-full rounded-lg border border-zinc-200 bg-white py-1.5 pl-8 pr-3 text-xs
 							text-zinc-900 placeholder:text-zinc-400
@@ -274,7 +435,12 @@
 		<!-- Action row -->
 		<div class="mt-auto pt-3 flex items-center justify-between gap-2">
 			{#if !expanded}
-				<span class="text-sm font-bold text-zinc-900">{formatPrice(activeTotal)}</span>
+				<div>
+					<span class="text-sm font-bold text-zinc-900">{formatPrice(activeTotal)}</span>
+					{#if unavailableCount > 0}
+						<span class="block text-[10px] font-semibold text-red-700">{unavailableCount} unavailable</span>
+					{/if}
+				</div>
 			{:else}
 				<div></div>
 			{/if}
@@ -299,22 +465,46 @@
 					<svg class="size-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
 						<polyline points="20 6 9 17 4 12"/>
 					</svg>
-					Added!
+					{addResult ? resultMessage(addResult) : 'Added!'}
 				</div>
 			{:else if addStatus === 'error'}
 				<div class="flex items-center gap-1.5 rounded-full bg-red-500 text-white px-3 py-1.5 text-xs font-medium">
-					Failed
+					{addResult ? resultMessage(addResult) : addError || 'Failed'}
+				</div>
+			{:else if availabilityState === 'error'}
+				<button
+					type="button"
+					onclick={onRefreshAvailability}
+					class="rounded-full bg-zinc-100 text-zinc-700 px-3 py-1.5 text-xs font-medium hover:bg-zinc-200 transition-colors"
+				>Retry availability check</button>
+			{:else if availabilityState === 'checking'}
+				<button type="button" disabled class="flex items-center gap-1.5 rounded-full bg-zinc-100 text-zinc-400 px-3 py-1.5 text-xs font-medium cursor-wait">
+					<svg class="size-3.5 animate-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+						<path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/>
+					</svg>
+					Checking
+				</button>
+			{:else if hasBlockedIngredients}
+				<div class="flex items-center gap-1.5">
+					<button type="button" disabled class="flex items-center gap-1.5 rounded-full bg-zinc-100 text-zinc-400 px-3 py-1.5 text-xs font-medium cursor-not-allowed">
+						Add
+					</button>
+					<button
+						type="button"
+						onclick={recheckAvailability}
+						class="text-xs font-medium text-zinc-600 underline hover:text-zinc-900"
+					>Recheck</button>
 				</div>
 			{:else if basketAvailable}
 				<button
 					type="button"
 					onclick={handleAddToBasket}
-					disabled={addStatus === 'adding' || ingredients.filter((i) => !i.isDeselected).length === 0}
-					title="Add to basket"
+					disabled={addStatus === 'checking' || addStatus === 'adding' || hasBlockedIngredients}
+					title={hasBlockedIngredients ? 'Replace or remove unavailable products before adding' : 'Add to basket'}
 					class="flex items-center gap-1.5 rounded-full bg-zinc-800 text-white px-3 py-1.5
 						text-xs font-medium hover:bg-zinc-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
 				>
-					{#if addStatus === 'adding'}
+					{#if addStatus === 'checking' || addStatus === 'adding'}
 						<svg class="size-3.5 animate-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
 							<path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/>
 						</svg>

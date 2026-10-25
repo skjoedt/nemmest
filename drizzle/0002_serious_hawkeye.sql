@@ -1,0 +1,1 @@
+ALTER TABLE "recipe_ingredients" ADD COLUMN "is_unavailable" boolean DEFAULT false NOT NULL;

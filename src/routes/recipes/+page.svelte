@@ -2,7 +2,15 @@
 	import { onMount } from 'svelte';
 	import SearchRecipeCard from '$lib/components/SearchRecipeCard.svelte';
 	import FavoriteRecipeCard from '$lib/components/FavoriteRecipeCard.svelte';
-	import type { BasketLine, NemligRecipe, FavoriteRecipe, RecipeSortOrder } from '$lib/types';
+	import type {
+		BasketLine,
+		FavoriteRecipe,
+		IngredientAvailability,
+		NemligRecipe,
+		RecipeAvailabilityResult,
+		RecipeBasketAddResult,
+		RecipeSortOrder,
+	} from '$lib/types';
 	import type { PageData } from './$types';
 	import { parsePersonsSetting, parseSortOrderSetting } from '$lib/settings';
 
@@ -18,11 +26,17 @@
 	let searchStatus = $state<SearchStatus>('idle');
 	let searchError = $state('');
 	let basketAvailable = $state(false);
+	type AvailabilityState = 'checking' | 'ready' | 'error';
+	let availabilityState = $state<AvailabilityState>('checking');
+	let availabilityByIngredient = $state<Record<number, IngredientAvailability>>({});
 
 	let persons = $state(parsePersonsSetting(data.settings));
 	let defaultSortOrder = $state<RecipeSortOrder>(parseSortOrderSetting(data.settings));
 
-	onMount(() => { checkBasketAvailable(); });
+	onMount(() => {
+		checkBasketAvailable();
+		refreshAllAvailability();
+	});
 
 	// ── Search ────────────────────────────────────────────────────────────────
 
@@ -96,8 +110,54 @@
 		}
 	}
 
-	async function addRecipeToBasket(recipe: FavoriteRecipe): Promise<void> {
-		const activeIngredients = recipe.ingredients.filter((i) => !i.isDeselected);
+	function applyAvailability(recipes: RecipeAvailabilityResult[]) {
+		const next = { ...availabilityByIngredient };
+		for (const recipe of recipes) {
+			for (const ingredient of recipe.ingredients) {
+				next[ingredient.ingredientId] = ingredient;
+			}
+		}
+		availabilityByIngredient = next;
+	}
+
+	async function checkAvailability(recipeId?: string): Promise<RecipeAvailabilityResult[]> {
+		const res = await fetch('/api/recipes/availability', {
+			method: 'POST',
+			headers: { 'content-type': 'application/json' },
+			body: JSON.stringify(recipeId ? { recipeId } : {}),
+		});
+		if (!res.ok) throw new Error(`HTTP ${res.status}`);
+		const body = await res.json() as { recipes?: RecipeAvailabilityResult[] };
+		const recipes = body.recipes ?? [];
+		applyAvailability(recipes);
+		return recipes;
+	}
+
+	async function refreshAllAvailability() {
+		availabilityState = 'checking';
+		try {
+			await checkAvailability();
+			availabilityState = 'ready';
+		} catch {
+			availabilityState = 'error';
+		}
+	}
+
+	function isMissingProductError(body: unknown): boolean {
+		if (!body || typeof body !== 'object') return false;
+		const detail = (body as { detail?: unknown }).detail;
+		if (typeof detail !== 'string') return false;
+
+		try {
+			const upstream = JSON.parse(detail) as { ErrorCode?: unknown; ErrorMessage?: unknown };
+			return upstream.ErrorCode === 2 && upstream.ErrorMessage === 'Product was not found';
+		} catch {
+			return false;
+		}
+	}
+
+	async function addRecipeToBasket(recipe: FavoriteRecipe): Promise<RecipeBasketAddResult> {
+		const activeIngredients = recipe.ingredients.filter((i) => !i.isDeselected && !i.isUnavailable);
 
 		if (activeIngredients.length === 0) throw new Error('No active ingredients');
 
@@ -117,6 +177,12 @@
 			);
 		}
 
+		const result: RecipeBasketAddResult = {
+			addedProductIds: [],
+			missingProductIds: [],
+			failedProductIds: [],
+		};
+
 		for (const [productId, quantity] of ingredientQuantities) {
 			const res = await fetch('/api/nemlig/basket/AddToBasket', {
 				method: 'POST',
@@ -129,8 +195,20 @@
 				}),
 			});
 
-			if (!res.ok) throw new Error(`HTTP ${res.status}`);
+			if (res.ok) {
+				result.addedProductIds.push(productId);
+				continue;
+			}
+
+			const body = await res.json().catch(() => null) as unknown;
+			if (isMissingProductError(body)) {
+				result.missingProductIds.push(productId);
+			} else {
+				result.failedProductIds.push(productId);
+			}
 		}
+
+		return result;
 	}
 </script>
 
@@ -218,8 +296,12 @@
 					<FavoriteRecipeCard
 						recipe={fav}
 						{basketAvailable}
+						availability={availabilityByIngredient}
+						{availabilityState}
 						onToggleFavorite={toggleFavorite}
 						onAddToBasket={addRecipeToBasket}
+						onCheckAvailability={checkAvailability}
+						onRefreshAvailability={refreshAllAvailability}
 					/>
 				{/each}
 			</div>

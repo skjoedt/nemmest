@@ -61,25 +61,67 @@ export const GET: RequestHandler = async ({ url }) => {
 };
 
 // PUT /api/recipes/ingredients — update a single stored ingredient
-// Body: { id, quantity?, isDeselected? }
+// Body: { id, quantity?, isDeselected?, isUnavailable?, replacement? }
 export const PUT: RequestHandler = async ({ request }) => {
 	const body = await request.json().catch(() => null) as {
 		id?: unknown;
 		quantity?: unknown;
 		isDeselected?: unknown;
+		isUnavailable?: unknown;
+		replacement?: {
+			id?: unknown;
+			name?: unknown;
+			description?: unknown;
+			imageUrl?: unknown;
+			url?: unknown;
+			price?: unknown;
+		} | null;
 	} | null;
 
 	if (typeof body?.id !== 'number') {
 		return json({ error: 'id (number) is required' }, { status: 400 });
 	}
 
-	const updates: Partial<{ quantity: number; isDeselected: boolean }> = {};
+	const updates: Partial<{
+		quantity: number;
+		isDeselected: boolean;
+		isUnavailable: boolean;
+		productId: string;
+		productName: string;
+		productDescription: string | null;
+		productImageUrl: string | null;
+		productUrl: string | null;
+		price: string;
+		isCustom: boolean;
+	}> = {};
 
 	if (typeof body.quantity === 'number' && Number.isInteger(body.quantity) && body.quantity >= 1) {
 		updates.quantity = body.quantity;
 	}
 	if (typeof body.isDeselected === 'boolean') {
 		updates.isDeselected = body.isDeselected;
+	}
+	if (typeof body.isUnavailable === 'boolean') {
+		updates.isUnavailable = body.isUnavailable;
+	}
+	if (body.replacement) {
+		const replacement = body.replacement;
+		if (
+			typeof replacement.id !== 'string' || !replacement.id.trim() ||
+			typeof replacement.name !== 'string' || !replacement.name.trim() ||
+			typeof replacement.price !== 'number' || !isFinite(replacement.price) || replacement.price < 0
+		) {
+			return json({ error: 'replacement id, name and non-negative price are required' }, { status: 400 });
+		}
+
+		updates.productId = replacement.id.trim();
+		updates.productName = replacement.name.trim();
+		updates.productDescription = typeof replacement.description === 'string' ? replacement.description : null;
+		updates.productImageUrl = typeof replacement.imageUrl === 'string' ? replacement.imageUrl : null;
+		updates.productUrl = typeof replacement.url === 'string' ? replacement.url : null;
+		updates.price = replacement.price.toFixed(2);
+		updates.isUnavailable = false;
+		updates.isCustom = false;
 	}
 
 	if (Object.keys(updates).length === 0) {
@@ -99,6 +141,9 @@ export const PUT: RequestHandler = async ({ request }) => {
 	}
 
 	const i = rows[0];
+	if (body.replacement) {
+		await db.delete(recipePriceHistory).where(eq(recipePriceHistory.recipeId, i.recipeId));
+	}
 	return json(toFavoriteIngredient(i));
 };
 

@@ -21,11 +21,11 @@ export async function fetchRecipePrices(): Promise<void> {
 		return;
 	}
 
-	// Load all active (non-deselected) ingredients, grouped by recipe
+	// Load ingredients that are both selected and still available, grouped by recipe.
 	const allIngredients = await db.select().from(recipeIngredients);
 	const ingredientsByRecipe = new Map<string, typeof allIngredients>();
 	for (const i of allIngredients) {
-		if (i.isDeselected) continue;
+		if (i.isDeselected || i.isUnavailable) continue;
 		const list = ingredientsByRecipe.get(i.recipeId) ?? [];
 		list.push(i);
 		ingredientsByRecipe.set(i.recipeId, list);

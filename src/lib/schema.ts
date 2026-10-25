@@ -34,6 +34,7 @@ export const recipeIngredients = pgTable('recipe_ingredients', {
 	quantity: integer('quantity').notNull().default(1),
 	price: numeric('price', { precision: 8, scale: 2 }).notNull(),
 	isDeselected: boolean('is_deselected').notNull().default(false),
+	isUnavailable: boolean('is_unavailable').notNull().default(false),
 	isCustom: boolean('is_custom').notNull().default(false),
 	sortOrder: integer('sort_order').notNull().default(0),
 	addedAt: timestamp('added_at').defaultNow().notNull(),

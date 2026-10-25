@@ -77,6 +77,26 @@ export interface FavoriteRecipe {
 	ingredients: FavoriteIngredient[];
 }
 
+export interface RecipeBasketAddResult {
+	addedProductIds: string[];
+	missingProductIds: string[];
+	failedProductIds: string[];
+}
+
+export type IngredientAvailabilityStatus = 'available' | 'unavailable' | 'unknown';
+
+export interface IngredientAvailability {
+	ingredientId: number;
+	status: IngredientAvailabilityStatus;
+	replacement: NemligProduct | null;
+	replacementUrl: string | null;
+}
+
+export interface RecipeAvailabilityResult {
+	recipeId: string;
+	ingredients: IngredientAvailability[];
+}
+
 export interface FavoriteIngredient {
 	id: number;
 	recipeId: string;
@@ -88,6 +108,7 @@ export interface FavoriteIngredient {
 	quantity: number;
 	price: number;
 	isDeselected: boolean;
+	isUnavailable: boolean;
 	isCustom: boolean;
 	sortOrder: number;
 }

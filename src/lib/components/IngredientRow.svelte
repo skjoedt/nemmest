@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { formatPrice } from '$lib/format';
+	import type { NemligProduct } from '$lib/types';
 
 	interface Props {
 		imageUrl: string | null;
@@ -8,11 +9,16 @@
 		quantity: number;
 		price: number;
 		isDeselected?: boolean;
+		isUnavailable?: boolean;
 		isCustom?: boolean;
 		href?: string | null;
+		replacement?: NemligProduct | null;
+		replacementUrl?: string | null;
 		onToggleDeselect?: () => void;
 		onQuantityChange?: (value: string) => void;
 		onRemove?: () => void;
+		onUseReplacement?: (product: NemligProduct) => void;
+		onFindSimilar?: () => void;
 	}
 
 	let {
@@ -22,11 +28,16 @@
 		quantity,
 		price,
 		isDeselected = false,
+		isUnavailable = false,
 		isCustom = false,
 		href = null,
+		replacement = null,
+		replacementUrl = null,
 		onToggleDeselect,
 		onQuantityChange,
 		onRemove,
+		onUseReplacement,
+		onFindSimilar,
 	}: Props = $props();
 </script>
 
@@ -55,7 +66,30 @@
 				{isDeselected ? 'line-through text-zinc-400' : ''}"
 			>{name}</span>
 		{/if}
-	{#if meta}
+	{#if isUnavailable}
+		<span class="text-[10px] font-semibold text-red-700 block leading-tight">No longer available at nemlig.com</span>
+		{#if replacement && onUseReplacement}
+			<button
+				type="button"
+				onclick={() => onUseReplacement(replacement)}
+				class="mt-0.5 text-[10px] font-medium text-red-700 underline hover:text-red-900"
+			>Use suggested replacement: {replacement.name}</button>
+		{:else if replacementUrl}
+			<a
+				href={replacementUrl}
+				target="_blank"
+				rel="noopener noreferrer"
+				class="mt-0.5 text-[10px] font-medium text-red-700 underline hover:text-red-900"
+			>View suggested replacement</a>
+		{/if}
+		{#if onFindSimilar}
+			<button
+				type="button"
+				onclick={onFindSimilar}
+				class="mt-0.5 ml-2 text-[10px] font-medium text-red-700 underline hover:text-red-900"
+			>Find similar products</button>
+		{/if}
+	{:else if meta}
 		<span class="text-[10px] text-zinc-400 truncate block leading-tight">{meta}</span>
 	{/if}
 	</div>
@@ -75,9 +109,13 @@
 	{/if}
 
 	<!-- Price -->
-	<span class="text-xs font-medium tabular-nums shrink-0
-		{isDeselected ? 'line-through text-zinc-400' : 'text-zinc-700'}"
-	>{formatPrice(price)}</span>
+	{#if isUnavailable}
+		<span class="text-[10px] font-medium text-red-700 shrink-0">Unavailable</span>
+	{:else}
+		<span class="text-xs font-medium tabular-nums shrink-0
+			{isDeselected ? 'line-through text-zinc-400' : 'text-zinc-700'}"
+		>{formatPrice(price)}</span>
+	{/if}
 
 	<!-- Deselect toggle -->
 	{#if onToggleDeselect}
