@@ -8,7 +8,7 @@ const log = logger.withTag('nemlig/proxy');
 
 const FORWARD_RESPONSE_HEADERS = ['content-type', 'cache-control', 'etag', 'last-modified'];
 
-const handler: RequestHandler = async ({ request, params, cookies }) => {
+const handler: RequestHandler = async ({ request, params, cookies, url }) => {
 	const limited = enforceBurstLimit();
 	if (limited) return limited;
 
@@ -59,7 +59,7 @@ const handler: RequestHandler = async ({ request, params, cookies }) => {
 
 	log.debug(`Response ${nemligRes.status}:`, responseText.slice(0, 1000));
 
-	forwardCookies(nemligRes, cookies);
+	forwardCookies(nemligRes, cookies, url.protocol === 'https:');
 
 	const responseHeaders = new Headers();
 	for (const name of FORWARD_RESPONSE_HEADERS) {

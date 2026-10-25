@@ -28,7 +28,7 @@ const log = logger.withTag('nemlig');
 
 // Parses all Set-Cookie headers from a nemlig response and merges the resulting
 // name→value pairs into the existing session blob in an HttpOnly app-owned cookie.
-export function forwardCookies(response: Response, cookies: Cookies): void {
+export function forwardCookies(response: Response, cookies: Cookies, secure: boolean): Set<string> {
 	const h = response.headers as unknown as { getSetCookie?: () => string[] };
 	const raw = typeof h.getSetCookie === 'function'
 		? h.getSetCookie()
@@ -45,7 +45,8 @@ export function forwardCookies(response: Response, cookies: Cookies): void {
 		incoming[name] = value;
 	}
 
-	if (Object.keys(incoming).length === 0) return;
+	const forwarded = new Set(Object.keys(incoming));
+	if (forwarded.size === 0) return forwarded;
 
 	// Merge into existing session so previously-set cookies (e.g. .ASPXAUTH) are preserved.
 	let session: Record<string, string> = {};
@@ -65,7 +66,10 @@ export function forwardCookies(response: Response, cookies: Cookies): void {
 		path: '/',
 		httpOnly: true,
 		sameSite: 'lax',
+		secure,
 	});
+
+	return forwarded;
 }
 
 // Returns the nemlig session cookies as an upstream Cookie header string,

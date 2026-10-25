@@ -6,7 +6,7 @@ import { logger } from '$lib/logger';
 
 const log = logger.withTag('nemlig/login');
 
-export const POST: RequestHandler = async ({ request, cookies }) => {
+export const POST: RequestHandler = async ({ request, cookies, url }) => {
 	const reqBody = await request.json().catch(() => null) as {
 		username?: unknown;
 		password?: unknown;
@@ -62,7 +62,11 @@ export const POST: RequestHandler = async ({ request, cookies }) => {
 		error(502, 'nemlig.com returned an unexpected error');
 	}
 
-	forwardCookies(nemligRes, cookies);
+	const forwarded = forwardCookies(nemligRes, cookies, url.protocol === 'https:');
+	if (!forwarded.has('.ASPXAUTH')) {
+		log.error('Login response did not include an authentication cookie');
+		return json({ error: 'nemlig.com did not establish an authenticated session' }, { status: 502 });
+	}
 
 	log.info('Login successful');
 	return json({ ok: true });
