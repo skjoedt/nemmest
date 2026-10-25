@@ -20,7 +20,6 @@ export const recipeFavorites = pgTable('recipe_favorites', {
 	imageUrl: text('image_url'),
 	preparationTime: integer('preparation_time'),
 	url: text('url'),
-	anchorProductSelectionId: text('anchor_product_selection_id'),
 	addedAt: timestamp('added_at').defaultNow().notNull(),
 });
 

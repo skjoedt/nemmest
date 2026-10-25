@@ -2,7 +2,7 @@
 	import { onMount } from 'svelte';
 	import SearchRecipeCard from '$lib/components/SearchRecipeCard.svelte';
 	import FavoriteRecipeCard from '$lib/components/FavoriteRecipeCard.svelte';
-	import type { NemligRecipe, FavoriteRecipe, RecipeSortOrder } from '$lib/types';
+	import type { BasketLine, NemligRecipe, FavoriteRecipe, RecipeSortOrder } from '$lib/types';
 	import type { PageData } from './$types';
 	import { parsePersonsSetting, parseSortOrderSetting } from '$lib/settings';
 
@@ -97,34 +97,40 @@
 	}
 
 	async function addRecipeToBasket(recipe: FavoriteRecipe): Promise<void> {
-		const anchor = recipe.anchorProductSelectionId;
-		if (!anchor) throw new Error('No anchor product selection ID');
-
 		const activeIngredients = recipe.ingredients.filter((i) => !i.isDeselected);
 
 		if (activeIngredients.length === 0) throw new Error('No active ingredients');
 
-		const selectedProducts = activeIngredients.map((i) => ({
-			ProductSelectionId: anchor,
-			ProductSelectionName: i.productName,
-			ProductId: i.productId,
-			Quantity: i.quantity,
-		}));
+		const basketRes = await fetch('/api/nemlig/basket/GetBasket');
+		if (!basketRes.ok) throw new Error(`HTTP ${basketRes.status}`);
 
-		const res = await fetch('/api/nemlig/basket/AddRecipeToBasket', {
-			method: 'POST',
-			headers: { 'content-type': 'application/json' },
-			body: JSON.stringify({
-				RecipeId: recipe.recipeId,
-				NumberOfPeople: '1',
-				Sorting: 'default',
-				SelectedProducts: selectedProducts,
-				SoldoutProducts: [],
-				SupplementProducts: [],
-			}),
-		});
+		const basket = await basketRes.json() as { Lines?: BasketLine[] };
+		const currentQuantities = new Map(
+			(basket.Lines ?? []).map((line) => [line.Id, line.Quantity]),
+		);
+		const ingredientQuantities = new Map<string, number>();
 
-		if (!res.ok) throw new Error(`HTTP ${res.status}`);
+		for (const ingredient of activeIngredients) {
+			ingredientQuantities.set(
+				ingredient.productId,
+				(ingredientQuantities.get(ingredient.productId) ?? 0) + ingredient.quantity,
+			);
+		}
+
+		for (const [productId, quantity] of ingredientQuantities) {
+			const res = await fetch('/api/nemlig/basket/AddToBasket', {
+				method: 'POST',
+				headers: { 'content-type': 'application/json' },
+				body: JSON.stringify({
+					ProductId: productId,
+					quantity: (currentQuantities.get(productId) ?? 0) + quantity,
+					AffectPartialQuantity: true,
+					disableQuantityValidation: false,
+				}),
+			});
+
+			if (!res.ok) throw new Error(`HTTP ${res.status}`);
+		}
 	}
 </script>
 

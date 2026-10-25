@@ -54,9 +54,6 @@ export const POST: RequestHandler = async ({ request }) => {
 		return json({ error: 'Could not fetch recipe ingredients from nemlig.com' }, { status: 502 });
 	}
 
-	const nonSupplementSelections = selections.filter((s) => !s.IsSupplementProduct);
-	const anchorProductSelectionId = nonSupplementSelections[0]?.ProductSelectionId ?? null;
-
 	const recipeValues = {
 		recipeId,
 		name: body.name.trim(),
@@ -64,7 +61,6 @@ export const POST: RequestHandler = async ({ request }) => {
 		imageUrl: typeof body.imageUrl === 'string' ? body.imageUrl : null,
 		preparationTime: typeof body.preparationTime === 'number' ? body.preparationTime : null,
 		url: typeof body.url === 'string' ? body.url : null,
-		anchorProductSelectionId,
 	};
 
 	const [favoriteRow] = await db

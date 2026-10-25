@@ -74,7 +74,6 @@ export interface FavoriteRecipe {
 	imageUrl: string | null;
 	preparationTime: number | null;
 	url: string | null;
-	anchorProductSelectionId: string | null;
 	ingredients: FavoriteIngredient[];
 }
 
