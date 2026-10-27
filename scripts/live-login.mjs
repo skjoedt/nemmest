@@ -16,8 +16,12 @@ try {
 	const deadline = Date.now() + 10 * 60_000;
 	while (Date.now() < deadline) {
 		try {
-			const response = await context.request.get(new URL('/api/nemlig/session', baseUrl).toString());
-			if (response.ok()) {
+			// Poll from the page so this check uses the same browser cookie jar as the manual login.
+			const authenticated = await page.evaluate(async () => {
+				const response = await fetch('/api/nemlig/session');
+				return response.ok;
+			});
+			if (authenticated) {
 				await persistStorageState(context);
 				captured = true;
 				console.log('Session captured. You can close the browser.');
