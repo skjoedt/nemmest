@@ -22,6 +22,41 @@
       "when": 1792943927321,
       "tag": "0002_serious_hawkeye",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1791482582000,
+      "tag": "0003_recipe_ingredient_selection_id",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1791482106000,
+      "tag": "0004_recipe_ingredient_selection_name",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1791482582000,
+      "tag": "0005_recipe_favorite_preferences",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1794190400000,
+      "tag": "0006_recipe_ingredient_availability_cache",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1794190400001,
+      "tag": "0007_recipe_schema_compatibility",
+      "breakpoints": true
     }
   ]
 }

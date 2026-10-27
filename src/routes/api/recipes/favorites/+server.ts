@@ -61,6 +61,8 @@ export const POST: RequestHandler = async ({ request }) => {
 		imageUrl: typeof body.imageUrl === 'string' ? body.imageUrl : null,
 		preparationTime: typeof body.preparationTime === 'number' ? body.preparationTime : null,
 		url: typeof body.url === 'string' ? body.url : null,
+		persons,
+		sortOrder,
 	};
 
 	const [favoriteRow] = await db
@@ -77,6 +79,8 @@ export const POST: RequestHandler = async ({ request }) => {
 
 	const ingredientValues = selections.map((sel, idx) => ({
 		recipeId,
+		productSelectionId: sel.ProductSelectionId,
+		productSelectionName: sel.Title.trim(),
 		productId: sel.Product!.Id,
 		productName: sel.Product!.Name,
 		productDescription: sel.Product!.Description ?? null,

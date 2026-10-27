@@ -26,8 +26,6 @@
 	let searchStatus = $state<SearchStatus>('idle');
 	let searchError = $state('');
 	let basketAvailable = $state(false);
-	type AvailabilityState = 'checking' | 'ready' | 'error';
-	let availabilityState = $state<AvailabilityState>('checking');
 	let availabilityByIngredient = $state<Record<number, IngredientAvailability>>({});
 
 	let persons = $state(parsePersonsSetting(data.settings));
@@ -35,7 +33,6 @@
 
 	onMount(() => {
 		checkBasketAvailable();
-		refreshAllAvailability();
 	});
 
 	// ── Search ────────────────────────────────────────────────────────────────
@@ -120,27 +117,17 @@
 		availabilityByIngredient = next;
 	}
 
-	async function checkAvailability(recipeId?: string): Promise<RecipeAvailabilityResult[]> {
+	async function checkAvailability(recipeId: string, force = false): Promise<RecipeAvailabilityResult[]> {
 		const res = await fetch('/api/recipes/availability', {
 			method: 'POST',
 			headers: { 'content-type': 'application/json' },
-			body: JSON.stringify(recipeId ? { recipeId } : {}),
+			body: JSON.stringify({ recipeId, force }),
 		});
 		if (!res.ok) throw new Error(`HTTP ${res.status}`);
 		const body = await res.json() as { recipes?: RecipeAvailabilityResult[] };
 		const recipes = body.recipes ?? [];
 		applyAvailability(recipes);
 		return recipes;
-	}
-
-	async function refreshAllAvailability() {
-		availabilityState = 'checking';
-		try {
-			await checkAvailability();
-			availabilityState = 'ready';
-		} catch {
-			availabilityState = 'error';
-		}
 	}
 
 	function isMissingProductError(body: unknown): boolean {
@@ -159,7 +146,7 @@
 	async function addRecipeToBasket(recipe: FavoriteRecipe): Promise<RecipeBasketAddResult> {
 		const activeIngredients = recipe.ingredients.filter((i) => !i.isDeselected && !i.isUnavailable);
 
-		if (activeIngredients.length === 0) throw new Error('No active ingredients');
+		if (activeIngredients.length === 0) throw new Error('No active recipe ingredients');
 
 		const basketRes = await fetch('/api/nemlig/basket/GetBasket');
 		if (!basketRes.ok) throw new Error(`HTTP ${basketRes.status}`);
@@ -297,11 +284,9 @@
 						recipe={fav}
 						{basketAvailable}
 						availability={availabilityByIngredient}
-						{availabilityState}
 						onToggleFavorite={toggleFavorite}
 						onAddToBasket={addRecipeToBasket}
 						onCheckAvailability={checkAvailability}
-						onRefreshAvailability={refreshAllAvailability}
 					/>
 				{/each}
 			</div>

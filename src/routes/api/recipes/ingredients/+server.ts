@@ -86,6 +86,10 @@ export const PUT: RequestHandler = async ({ request }) => {
 		quantity: number;
 		isDeselected: boolean;
 		isUnavailable: boolean;
+		availabilityStatus: string;
+		availabilityCheckedAt: Date | null;
+		availabilityRetryAfter: null;
+		availabilityLeaseUntil: null;
 		productId: string;
 		productName: string;
 		productDescription: string | null;
@@ -103,6 +107,10 @@ export const PUT: RequestHandler = async ({ request }) => {
 	}
 	if (typeof body.isUnavailable === 'boolean') {
 		updates.isUnavailable = body.isUnavailable;
+		updates.availabilityStatus = body.isUnavailable ? 'unavailable' : 'unknown';
+		updates.availabilityCheckedAt = body.isUnavailable ? new Date() : null;
+		updates.availabilityRetryAfter = null;
+		updates.availabilityLeaseUntil = null;
 	}
 	if (body.replacement) {
 		const replacement = body.replacement;
@@ -121,6 +129,10 @@ export const PUT: RequestHandler = async ({ request }) => {
 		updates.productUrl = typeof replacement.url === 'string' ? replacement.url : null;
 		updates.price = replacement.price.toFixed(2);
 		updates.isUnavailable = false;
+		updates.availabilityStatus = 'unknown';
+		updates.availabilityCheckedAt = null;
+		updates.availabilityRetryAfter = null;
+		updates.availabilityLeaseUntil = null;
 		updates.isCustom = false;
 	}
 

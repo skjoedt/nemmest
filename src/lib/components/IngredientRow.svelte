@@ -10,6 +10,7 @@
 		price: number;
 		isDeselected?: boolean;
 		isUnavailable?: boolean;
+		isUnknown?: boolean;
 		isCustom?: boolean;
 		href?: string | null;
 		replacement?: NemligProduct | null;
@@ -29,6 +30,7 @@
 		price,
 		isDeselected = false,
 		isUnavailable = false,
+		isUnknown = false,
 		isCustom = false,
 		href = null,
 		replacement = null,
@@ -89,6 +91,8 @@
 				class="mt-0.5 ml-2 text-[10px] font-medium text-red-700 underline hover:text-red-900"
 			>Find similar products</button>
 		{/if}
+	{:else if isUnknown}
+		<span class="text-[10px] font-medium text-amber-700 block leading-tight">Availability could not be confirmed</span>
 	{:else if meta}
 		<span class="text-[10px] text-zinc-400 truncate block leading-tight">{meta}</span>
 	{/if}
@@ -111,6 +115,8 @@
 	<!-- Price -->
 	{#if isUnavailable}
 		<span class="text-[10px] font-medium text-red-700 shrink-0">Unavailable</span>
+	{:else if isUnknown}
+		<span class="text-[10px] font-medium text-amber-700 shrink-0">Unknown</span>
 	{:else}
 		<span class="text-xs font-medium tabular-nums shrink-0
 			{isDeselected ? 'line-through text-zinc-400' : 'text-zinc-700'}"

@@ -1,5 +1,5 @@
 import { boolean, integer, numeric, pgTable, serial, text, timestamp } from 'drizzle-orm/pg-core';
-import type { FavoriteIngredient, FavoriteRecipe } from '$lib/types';
+import { parseSortOrder, type FavoriteIngredient, type FavoriteRecipe } from '$lib/types';
 
 export const productFavorites = pgTable('product_favorites', {
 	id: serial('id').primaryKey(),
@@ -20,12 +20,16 @@ export const recipeFavorites = pgTable('recipe_favorites', {
 	imageUrl: text('image_url'),
 	preparationTime: integer('preparation_time'),
 	url: text('url'),
+	persons: integer('persons').notNull().default(4),
+	sortOrder: text('sort_order').notNull().default('default'),
 	addedAt: timestamp('added_at').defaultNow().notNull(),
 });
 
 export const recipeIngredients = pgTable('recipe_ingredients', {
 	id: serial('id').primaryKey(),
 	recipeId: text('recipe_id').notNull(),
+	productSelectionId: text('product_selection_id'),
+	productSelectionName: text('product_selection_name'),
 	productId: text('product_id').notNull(),
 	productName: text('product_name').notNull(),
 	productDescription: text('product_description'),
@@ -35,6 +39,10 @@ export const recipeIngredients = pgTable('recipe_ingredients', {
 	price: numeric('price', { precision: 8, scale: 2 }).notNull(),
 	isDeselected: boolean('is_deselected').notNull().default(false),
 	isUnavailable: boolean('is_unavailable').notNull().default(false),
+	availabilityStatus: text('availability_status').notNull().default('unknown'),
+	availabilityCheckedAt: timestamp('availability_checked_at'),
+	availabilityRetryAfter: timestamp('availability_retry_after'),
+	availabilityLeaseUntil: timestamp('availability_lease_until'),
 	isCustom: boolean('is_custom').notNull().default(false),
 	sortOrder: integer('sort_order').notNull().default(0),
 	addedAt: timestamp('added_at').defaultNow().notNull(),
@@ -59,8 +67,14 @@ type IngredientRow = typeof recipeIngredients.$inferSelect;
 type RecipeFavoriteRow = typeof recipeFavorites.$inferSelect;
 
 export function toFavoriteIngredient(row: IngredientRow): FavoriteIngredient {
-	const { addedAt: _, price, ...rest } = row;
-	return { ...rest, price: parseFloat(price) };
+	const { addedAt: _, price, availabilityStatus, availabilityLeaseUntil: __, ...rest } = row;
+	return {
+		...rest,
+		availabilityStatus: availabilityStatus === 'available' || availabilityStatus === 'unavailable'
+			? availabilityStatus
+			: 'unknown',
+		price: parseFloat(price),
+	};
 }
 
 /** Groups ingredient rows by recipeId, applying toFavoriteIngredient. */
@@ -81,6 +95,6 @@ export function toFavoriteRecipe(
 	row: RecipeFavoriteRow,
 	ingredients: FavoriteIngredient[],
 ): FavoriteRecipe {
-	const { id: _, addedAt: __, ...rest } = row;
-	return { ...rest, ingredients };
+	const { id: _, addedAt: __, sortOrder, ...rest } = row;
+	return { ...rest, sortOrder: parseSortOrder(sortOrder), ingredients };
 }

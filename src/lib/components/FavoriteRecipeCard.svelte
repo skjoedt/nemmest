@@ -15,22 +15,18 @@
 		recipe: FavoriteRecipe;
 		basketAvailable: boolean;
 		availability: Record<number, IngredientAvailability>;
-		availabilityState: 'checking' | 'ready' | 'error';
 		onToggleFavorite: (recipe: FavoriteRecipe) => void;
 		onAddToBasket: (recipe: FavoriteRecipe) => Promise<RecipeBasketAddResult>;
-		onCheckAvailability: (recipeId: string) => Promise<RecipeAvailabilityResult[]>;
-		onRefreshAvailability: () => Promise<void>;
+		onCheckAvailability: (recipeId: string, force?: boolean) => Promise<RecipeAvailabilityResult[]>;
 	}
 
 	let {
 		recipe,
 		basketAvailable,
 		availability,
-		availabilityState,
 		onToggleFavorite,
 		onAddToBasket,
 		onCheckAvailability,
-		onRefreshAvailability,
 	}: Props = $props();
 
 	let ingredients = $state<FavoriteIngredient[]>(recipe.ingredients);
@@ -55,8 +51,10 @@
 			.reduce((sum, i) => sum + i.price * i.quantity, 0)
 	);
 	const unavailableCount = $derived(ingredients.filter((i) => isUnavailable(i)).length);
+	const activeUnavailableCount = $derived(ingredients.filter((i) => !i.isDeselected && isUnavailable(i)).length);
+	const unknownCount = $derived(ingredients.filter((i) => !i.isDeselected && isUnknown(i)).length);
 	const hasBlockedIngredients = $derived(
-		ingredients.some((i) => !i.isDeselected && (isUnavailable(i) || isUnknown(i))),
+		activeUnavailableCount > 0 || unknownCount > 0,
 	);
 
 	let expanded = $state(false);
@@ -96,7 +94,9 @@
 			storeAvailability(await onCheckAvailability(recipe.recipeId));
 			if (hasBlockedIngredients) {
 				addStatus = 'error';
-				addError = 'Resolve unavailable products before adding';
+				addError = activeUnavailableCount > 0
+					? 'Resolve unavailable products before adding'
+					: 'Product availability could not be confirmed';
 				setTimeout(() => { addStatus = 'idle'; }, 4000);
 				return;
 			}
@@ -116,6 +116,9 @@
 						status: 'unavailable' as const,
 						replacement: null,
 						replacementUrl: null,
+						checkedAt: new Date().toISOString(),
+						retryAfter: null,
+						fromCache: false,
 					}])),
 				};
 
@@ -143,7 +146,7 @@
 		addStatus = 'checking';
 		addError = '';
 		try {
-			storeAvailability(await onCheckAvailability(recipe.recipeId));
+			storeAvailability(await onCheckAvailability(recipe.recipeId, true));
 			addStatus = 'idle';
 		} catch {
 			addStatus = 'error';
@@ -268,7 +271,15 @@
 		if (replacementTarget?.id === updated.id) replacementTarget = null;
 		latestAvailability = {
 			...latestAvailability,
-			[updated.id]: { ingredientId: updated.id, status: 'available', replacement: null, replacementUrl: null },
+			[updated.id]: {
+				ingredientId: updated.id,
+				status: 'available',
+				replacement: null,
+				replacementUrl: null,
+				checkedAt: null,
+				retryAfter: null,
+				fromCache: false,
+			},
 		};
 	}
 
@@ -335,7 +346,7 @@
 				<div class="mt-2 rounded-lg border border-red-200 bg-red-50 px-2 py-1.5 text-xs text-red-800">
 					This recipe has products that are no longer available. Replace or remove them before adding to basket.
 				</div>
-			{:else if availabilityState === 'error' || ingredients.some((i) => !i.isDeselected && isUnknown(i))}
+			{:else if unknownCount > 0}
 				<div class="mt-2 rounded-lg border border-zinc-200 bg-zinc-50 px-2 py-1.5 text-xs text-zinc-700">
 					Product availability could not be confirmed. Adding is disabled until it can be checked.
 				</div>
@@ -350,6 +361,7 @@
 						price={ing.price * ing.quantity}
 						isDeselected={ing.isDeselected}
 						isUnavailable={isUnavailable(ing)}
+						isUnknown={isUnknown(ing)}
 						isCustom={ing.isCustom}
 						href={ing.productUrl}
 						replacement={ingredientAvailability(ing)?.replacement}
@@ -471,19 +483,6 @@
 				<div class="flex items-center gap-1.5 rounded-full bg-red-500 text-white px-3 py-1.5 text-xs font-medium">
 					{addResult ? resultMessage(addResult) : addError || 'Failed'}
 				</div>
-			{:else if availabilityState === 'error'}
-				<button
-					type="button"
-					onclick={onRefreshAvailability}
-					class="rounded-full bg-zinc-100 text-zinc-700 px-3 py-1.5 text-xs font-medium hover:bg-zinc-200 transition-colors"
-				>Retry availability check</button>
-			{:else if availabilityState === 'checking'}
-				<button type="button" disabled class="flex items-center gap-1.5 rounded-full bg-zinc-100 text-zinc-400 px-3 py-1.5 text-xs font-medium cursor-wait">
-					<svg class="size-3.5 animate-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-						<path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/>
-					</svg>
-					Checking
-				</button>
 			{:else if hasBlockedIngredients}
 				<div class="flex items-center gap-1.5">
 					<button type="button" disabled class="flex items-center gap-1.5 rounded-full bg-zinc-100 text-zinc-400 px-3 py-1.5 text-xs font-medium cursor-not-allowed">
@@ -492,8 +491,9 @@
 					<button
 						type="button"
 						onclick={recheckAvailability}
+						disabled={addStatus === 'checking'}
 						class="text-xs font-medium text-zinc-600 underline hover:text-zinc-900"
-					>Recheck</button>
+					>{addStatus === 'checking' ? 'Rechecking…' : 'Recheck'}</button>
 				</div>
 			{:else if basketAvailable}
 				<button

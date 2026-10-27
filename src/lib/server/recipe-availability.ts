@@ -27,6 +27,7 @@ async function fetchReplacementProduct(productUrl: URL): Promise<NemligProduct |
 
 	const response = await fetch(requestUrl, {
 		headers: { ...NEMLIG_STATIC_HEADERS, 'x-correlation-id': crypto.randomUUID() },
+		signal: AbortSignal.timeout(10_000),
 	}).catch(() => null);
 	if (!response?.ok) return null;
 
@@ -58,46 +59,122 @@ export async function checkIngredientAvailability(
 	ingredient: StoredIngredient,
 ): Promise<IngredientAvailability> {
 	if (!ingredient.productUrl) {
-		return { ingredientId: ingredient.id, status: 'unknown', replacement: null, replacementUrl: null };
+		return {
+			ingredientId: ingredient.id,
+			status: 'unknown',
+			replacement: null,
+			replacementUrl: null,
+			checkedAt: null,
+			retryAfter: null,
+			fromCache: false,
+		};
 	}
 
 	let productUrl: URL;
 	try {
 		productUrl = new URL(ingredient.productUrl);
 	} catch {
-		return { ingredientId: ingredient.id, status: 'unknown', replacement: null, replacementUrl: null };
+		return {
+			ingredientId: ingredient.id,
+			status: 'unknown',
+			replacement: null,
+			replacementUrl: null,
+			checkedAt: null,
+			retryAfter: null,
+			fromCache: false,
+		};
 	}
 
 	const response = await fetch(productUrl, {
 		redirect: 'manual',
 		headers: { ...NEMLIG_STATIC_HEADERS, 'x-correlation-id': crypto.randomUUID() },
+		signal: AbortSignal.timeout(10_000),
 	}).catch(() => null);
 
 	if (!response) {
-		return { ingredientId: ingredient.id, status: 'unknown', replacement: null, replacementUrl: null };
+		return {
+			ingredientId: ingredient.id,
+			status: 'unknown',
+			replacement: null,
+			replacementUrl: null,
+			checkedAt: null,
+			retryAfter: null,
+			fromCache: false,
+		};
 	}
 	if (response.status === 404 || response.status === 410) {
-		return { ingredientId: ingredient.id, status: 'unavailable', replacement: null, replacementUrl: null };
+		return {
+			ingredientId: ingredient.id,
+			status: 'unavailable',
+			replacement: null,
+			replacementUrl: null,
+			checkedAt: null,
+			retryAfter: null,
+			fromCache: false,
+		};
 	}
 	if (response.status < 300 || response.status >= 400) {
-		return { ingredientId: ingredient.id, status: response.ok ? 'available' : 'unknown', replacement: null, replacementUrl: null };
+		return {
+			ingredientId: ingredient.id,
+			status: response.ok ? 'available' : 'unknown',
+			replacement: null,
+			replacementUrl: null,
+			checkedAt: null,
+			retryAfter: null,
+			fromCache: false,
+		};
 	}
 
 	const location = response.headers.get('location');
 	if (!location) {
-		return { ingredientId: ingredient.id, status: 'unknown', replacement: null, replacementUrl: null };
+		return {
+			ingredientId: ingredient.id,
+			status: 'unknown',
+			replacement: null,
+			replacementUrl: null,
+			checkedAt: null,
+			retryAfter: null,
+			fromCache: false,
+		};
 	}
 
 	let replacementUrl: URL;
 	try {
 		replacementUrl = new URL(location, productUrl);
 	} catch {
-		return { ingredientId: ingredient.id, status: 'unknown', replacement: null, replacementUrl: null };
+		return {
+			ingredientId: ingredient.id,
+			status: 'unknown',
+			replacement: null,
+			replacementUrl: null,
+			checkedAt: null,
+			retryAfter: null,
+			fromCache: false,
+		};
+	}
+	if (replacementUrl.hash === '#404') {
+		return {
+			ingredientId: ingredient.id,
+			status: 'unavailable',
+			replacement: null,
+			replacementUrl: null,
+			checkedAt: null,
+			retryAfter: null,
+			fromCache: false,
+		};
 	}
 
 	const replacementId = productIdFromUrl(replacementUrl);
 	if (!replacementId || replacementId === ingredient.productId) {
-		return { ingredientId: ingredient.id, status: 'unknown', replacement: null, replacementUrl: null };
+		return {
+			ingredientId: ingredient.id,
+			status: 'unknown',
+			replacement: null,
+			replacementUrl: null,
+			checkedAt: null,
+			retryAfter: null,
+			fromCache: false,
+		};
 	}
 
 	return {
@@ -105,6 +182,9 @@ export async function checkIngredientAvailability(
 		status: 'unavailable',
 		replacement: await fetchReplacementProduct(replacementUrl),
 		replacementUrl: replacementUrl.toString(),
+		checkedAt: null,
+		retryAfter: null,
+		fromCache: false,
 	};
 }
 
